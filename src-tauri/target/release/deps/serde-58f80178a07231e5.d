@@ -1,0 +1,14 @@
+C:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\target\release\deps\serde-58f80178a07231e5.d: C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\target\release\build\serde-1eb70ab07a021867\out/private.rs
+
+C:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\target\release\deps\libserde-58f80178a07231e5.rlib: C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\target\release\build\serde-1eb70ab07a021867\out/private.rs
+
+C:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\target\release\deps\libserde-58f80178a07231e5.rmeta: C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\target\release\build\serde-1eb70ab07a021867\out/private.rs
+
+C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs:
+C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs:
+C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs:
+C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs:
+C:\Users\DUser\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs:
+C:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\target\release\build\serde-1eb70ab07a021867\out/private.rs:
+
+# env-dep:OUT_DIR=C:\\workspace\\DysProSim-rr\\dysprosim-tauri\\src-tauri\\target\\release\\build\\serde-1eb70ab07a021867\\out

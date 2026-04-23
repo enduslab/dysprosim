@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DysProSim 操作手册</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background: linear-gradient(135deg, #3B82F6, #1D4ED8);
+            color: white;
+            padding: 40px 20px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .header .version {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        .nav {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .nav h2 {
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            color: #3B82F6;
+        }
+        .nav ul {
+            list-style: none;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 8px;
+        }
+        .nav a {
+            color: #3B82F6;
+            text-decoration: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        .nav a:hover {
+            background: #EFF6FF;
+        }
+        .content {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h2 {
+            font-size: 1.8em;
+            color: #1F2937;
+            border-bottom: 2px solid #3B82F6;
+            padding-bottom: 10px;
+            margin: 40px 0 20px 0;
+        }
+        h3 {
+            font-size: 1.4em;
+            color: #374151;
+            margin: 30px 0 15px 0;
+        }
+        h4 {
+            font-size: 1.2em;
+            color: #4B5563;
+            margin: 20px 0 10px 0;
+        }
+        h5 {
+            font-size: 1.1em;
+            color: #6B7280;
+            margin: 15px 0 10px 0;
+        }
+        h6 {
+            font-size: 1em;
+            color: #6B7280;
+            margin: 15px 0 10px 0;
+        }
+        p {
+            margin-bottom: 15px;
+        }
+        ul, ol {
+            margin: 15px 0;
+            padding-left: 30px;
+        }
+        li {
+            margin-bottom: 8px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 0.95em;
+        }
+        th, td {
+            border: 1px solid #E5E7EB;
+            padding: 12px 15px;
+            text-align: left;
+        }
+        th {
+            background: #F9FAFB;
+            font-weight: 600;
+            color: #374151;
+        }
+        tr:nth-child(even) {
+            background: #F9FAFB;
+        }
+        code {
+            background: #F3F4F6;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+        }
+        strong {
+            color: #1F2937;
+        }
+        blockquote {
+            border-left: 4px solid #3B82F6;
+            padding-left: 20px;
+            margin: 20px 0;
+            color: #6B7280;
+            font-style: italic;
+        }
+        .note {
+            background: #FEF3C7;
+            border-left: 4px solid #F59E0B;
+            padding: 15px 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .note strong {
+            color: #92400E;
+        }
+        hr {
+            border: none;
+            border-top: 1px solid #E5E7EB;
+            margin: 30px 0;
+        }
+        .footer {
+            text-align: center;
+            padding: 30px;
+            color: #6B7280;
+            font-size: 0.9em;
+        }
+        .footer a {
+            color: #3B82F6;
+            text-decoration: none;
+        }
+        .toc-section {
+            margin-bottom: 20px;
+        }
+        .toc-section h3 {
+            font-size: 1.1em;
+            color: #374151;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>DysProSim 操作手册</h1>
+        <div class="version">版本：v1.0.0</div>
+    </div>
+    
+    <div class="container">
+        <div class="nav">
+            <h2>目录</h2>
+            <ul>
+                <li><a href="#section1">1. 软件界面概览</a></li>
+                <li><a href="#section2">2. 菜单栏操作</a></li>
+                <li><a href="#section3">3. 工具箱使用</a></li>
+                <li><a href="#section4">4. 画布操作</a></li>
+                <li><a href="#section5">5. 产品管理</a></li>
+                <li><a href="#section6">6. 物料管理</a></li>
+                <li><a href="#section7">7. 节点创建与配置</a></li>
+                <li><a href="#section8">8. 连线创建与配置</a></li>
+                <li><a href="#section9">9. 模拟运行</a></li>
+                <li><a href="#section10">10. 统计分析</a></li>
+                <li><a href="#section11">11. 文件操作</a></li>
+                <li><a href="#section12">12. 快捷键参考</a></li>
+            </ul>
+        </div>
+        
+        <div class="content">
+            <h2 id="section1">1. 软件界面概览</h2>
+            <p>软件界面由以下主要区域组成：</p>
+            <table>
+                <tr><th>区域</th><th>位置</th><th>功能</th></tr>
+                <tr><td>菜单栏</td><td>顶部</td><td>文件、编辑、视图、设置、帮助等菜单</td></tr>
+                <tr><td>工具箱</td><td>左侧</td><td>选择工具、设备创建、连线创建等</td></tr>
+                <tr><td>画布</td><td>中央</td><td>模型编辑区域</td></tr>
+                <tr><td>属性面板</td><td>右侧</td><td>显示和编辑选中对象的属性</td></tr>
+                <tr><td>状态栏</td><td>底部</td><td>显示当前状态信息</td></tr>
+            </table>
+            
+            <h2 id="section2">2. 菜单栏操作</h2>
+            
+            <h3>2.1 文件菜单</h3>
+            
+            <h4>新建画布</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「文件」</strong></li>
+                <li>选择 <strong>「新建」</strong></li>
+                <li>如当前画布有内容，系统会询问是否保存</li>
+                <li>选择保存或不保存后，画布将被清空</li>
+            </ol>
+            
+            <h4>打开文件</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「文件」</strong></li>
+                <li>选择 <strong>「打开」</strong></li>
+                <li>在弹出的文件选择对话框中，选择 <code>.json</code> 格式的布局文件</li>
+                <li>点击「打开」按钮</li>
+            </ol>
+            
+            <h4>保存文件</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「文件」</strong></li>
+                <li>选择 <strong>「保存」</strong> 或 <strong>「另存为」</strong></li>
+                <li>选择保存位置并输入文件名</li>
+                <li>点击「保存」按钮</li>
+            </ol>
+            
+            <h4>导出图片</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「文件」</strong></li>
+                <li>选择 <strong>「导出图片」</strong></li>
+                <li>选择保存位置并输入文件名</li>
+                <li>图片将以 PNG 格式保存</li>
+            </ol>
+            
+            <h3>2.2 编辑菜单</h3>
+            
+            <h4>删除选中对象</h4>
+            <ol>
+                <li>选中要删除的设备或连线</li>
+                <li>点击菜单栏 <strong>「编辑」</strong></li>
+                <li>选择 <strong>「删除」</strong></li>
+                <li>或直接按 <code>Delete</code> 键</li>
+            </ol>
+            
+            <h4>清空画布</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「编辑」</strong></li>
+                <li>选择 <strong>「清空画布」</strong></li>
+                <li>确认清空操作</li>
+            </ol>
+            
+            <h3>2.3 视图菜单</h3>
+            
+            <h4>缩放操作</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「视图」</strong></li>
+                <li>选择 <strong>「放大」</strong> 或 <strong>「缩小」</strong></li>
+                <li>或使用鼠标滚轮进行缩放</li>
+            </ol>
+            
+            <h4>重置视图</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「视图」</strong></li>
+                <li>选择 <strong>「重置视图」</strong></li>
+                <li>画布将恢复到初始缩放和位置</li>
+            </ol>
+            
+            <h3>2.4 设置菜单</h3>
+            
+            <h4>画布设置</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「设置」</strong></li>
+                <li>选择 <strong>「画布设置」</strong></li>
+                <li>在弹出的对话框中设置：
+                    <ul>
+                        <li>画布宽度（毫米）</li>
+                        <li>画布高度（毫米）</li>
+                    </ul>
+                </li>
+                <li>点击「确定」保存设置</li>
+            </ol>
+            
+            <h4>产品管理</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「设置」</strong></li>
+                <li>选择 <strong>「产品管理」</strong></li>
+                <li>在弹出的对话框中进行产品配置</li>
+            </ol>
+            
+            <h4>物料管理</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「设置」</strong></li>
+                <li>选择 <strong>「物料管理」</strong></li>
+                <li>在弹出的对话框中进行物料配置</li>
+            </ol>
+            
+            <h4>工具管理</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「设置」</strong></li>
+                <li>选择 <strong>「工具管理」</strong></li>
+                <li>在弹出的对话框中进行工具配置</li>
+            </ol>
+            
+            <p><strong>工具配置说明：</strong></p>
+            <ul>
+                <li><strong>工具编码：</strong>工具的唯一标识符</li>
+                <li><strong>工具名称：</strong>工具的显示名称</li>
+            </ul>
+            
+            <p><strong>工具管理操作：</strong></p>
+            <ul>
+                <li>点击 <strong>「新建工具」</strong> 创建新工具</li>
+                <li>点击 <strong>「编辑」</strong> 修改已有工具</li>
+                <li>点击 <strong>「删除」</strong> 删除工具</li>
+            </ul>
+            
+            <div class="note">
+                <strong>注意：</strong>工具的安装时间需要在加工站的产品配置中单独设置，因为同一工具在不同产品加工时可能需要不同的安装时间。
+            </div>
+            
+            <h3>2.5 帮助菜单</h3>
+            
+            <h4>操作手册</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「帮助」</strong></li>
+                <li>选择 <strong>「操作手册」</strong></li>
+                <li>查看软件操作手册</li>
+            </ol>
+            
+            <h4>关于</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「帮助」</strong></li>
+                <li>选择 <strong>「关于」</strong></li>
+                <li>查看软件版本、开发商信息和官网链接</li>
+            </ol>
+            
+            <h2 id="section3">3. 工具箱使用</h2>
+            <p>工具箱位于界面左侧，包含以下工具：</p>
+            
+            <h3>3.1 选择工具</h3>
+            <p><strong>图标：</strong>箭头指针</p>
+            <p><strong>使用方法：</strong></p>
+            <ol>
+                <li>点击选择工具图标</li>
+                <li>在画布上点击设备可选中单个设备</li>
+                <li>按住 <code>Ctrl</code> 键点击可多选设备</li>
+                <li>在画布空白处拖动可框选多个设备</li>
+            </ol>
+            
+            <h3>3.2 平移工具</h3>
+            <p><strong>图标：</strong>四向箭头</p>
+            <p><strong>使用方法：</strong></p>
+            <ol>
+                <li>点击平移工具图标</li>
+                <li>在画布上拖动可移动视图位置</li>
+                <li>也可在任何模式下按住鼠标中键拖动</li>
+            </ol>
+            
+            <h3>3.3 设备创建工具</h3>
+            
+            <h4>工作站（矩形设备）</h4>
+            <ol>
+                <li>点击工具箱中的矩形图标</li>
+                <li>在画布上点击要创建设备的位置</li>
+                <li>设备将以默认尺寸创建</li>
+            </ol>
+            
+            <h4>工作站（圆形设备）</h4>
+            <ol>
+                <li>点击工具箱中的圆形图标</li>
+                <li>在画布上点击要创建设备的位置</li>
+            </ol>
+            
+            <h4>起点</h4>
+            <p><strong>图标：</strong>绿色圆形带播放符号</p>
+            <ol>
+                <li>点击起点图标</li>
+                <li>在画布上点击创建起点</li>
+                <li>每个模型至少需要一个起点</li>
+            </ol>
+            
+            <h4>终点</h4>
+            <p><strong>图标：</strong>紫色菱形</p>
+            <ol>
+                <li>点击终点图标</li>
+                <li>在画布上点击创建终点</li>
+                <li>每个模型至少需要一个终点</li>
+            </ol>
+            
+            <h3>3.4 连线创建工具</h3>
+            <p>点击连线图标展开连线类型选择：</p>
+            <table>
+                <tr><th>类型</th><th>说明</th></tr>
+                <tr><td>直线</td><td>两点之间直接连接</td></tr>
+                <tr><td>肘形连线</td><td>自动生成带拐点的折线，可拖动控制点调整拐点位置</td></tr>
+                <tr><td>曲线</td><td>平滑的贝塞尔曲线</td></tr>
+                <tr><td>手动折线</td><td>用户自定义拐点的折线</td></tr>
+            </table>
+            
+            <p><strong>创建连线：</strong></p>
+            <ol>
+                <li>选择连线类型</li>
+                <li>将鼠标移到源设备的锚点上（设备边缘的小圆点）</li>
+                <li>按住鼠标左键拖动到目标设备的锚点</li>
+                <li>释放鼠标完成连线</li>
+            </ol>
+            
+            <h3>3.5 仓储设备</h3>
+            <p>点击仓储图标展开选择：</p>
+            
+            <h4>仓库</h4>
+            <ol>
+                <li>点击仓库图标</li>
+                <li>在画布上点击创建仓库</li>
+                <li>仓库具有固定容量限制</li>
+            </ol>
+            
+            <h4>临时堆场</h4>
+            <ol>
+                <li>点击临时堆场图标</li>
+                <li>在画布上点击创建临时堆场</li>
+                <li>临时堆场无容量限制</li>
+            </ol>
+            
+            <h3>3.6 缓冲区</h3>
+            <p><strong>图标：</strong>分隔的矩形</p>
+            <ol>
+                <li>点击缓冲区图标</li>
+                <li>在画布上点击创建缓冲区</li>
+            </ol>
+            
+            <h3>3.7 车间</h3>
+            <p><strong>图标：</strong>带虚线分隔的矩形</p>
+            <ol>
+                <li>点击车间图标</li>
+                <li>在画布上点击创建车间</li>
+                <li>可将设备、仓库、缓冲区放在车间内，移动车间时会同时移动车间内的设备</li>
+                <li>设备、仓库、缓冲区被放在车间内后，会有这些变化：
+                    <ul>
+                        <li>车间内的节点移动时将不能超出车间边界</li>
+                        <li>节点的"所属车间"属性将被自动设置为车间名称，可通过调整上下左右边距修改节点相对于车间四边的距离</li>
+                    </ul>
+                </li>
+            </ol>
+            
+            <h3>3.8 装配站</h3>
+            <p><strong>图标：</strong>梯形（底边较宽）</p>
+            <ol>
+                <li>点击装配站图标</li>
+                <li>在画布上点击创建装配站</li>
+                <li>装配站用于将多个上游设备的产品组装成一个产品</li>
+                <li>需要连接多个上游节点，并设置每个上游节点的来料需求量</li>
+            </ol>
+            
+            <h2 id="section4">4. 画布操作</h2>
+            
+            <h3>4.1 缩放画布</h3>
+            <table>
+                <tr><th>操作方式</th><th>说明</th></tr>
+                <tr><td>鼠标滚轮</td><td>向上滚动放大，向下滚动缩小</td></tr>
+                <tr><td>菜单「视图」→「放大/缩小」</td><td>每次缩放 20%</td></tr>
+            </table>
+            
+            <h3>4.2 平移画布</h3>
+            <table>
+                <tr><th>操作方式</th><th>说明</th></tr>
+                <tr><td>平移工具模式下拖动</td><td>移动视图位置</td></tr>
+                <tr><td>按住鼠标中键拖动</td><td>任何模式下都可使用</td></tr>
+            </table>
+            
+            <h3>4.3 选择对象</h3>
+            <table>
+                <tr><th>操作方式</th><th>说明</th></tr>
+                <tr><td>点击设备</td><td>选中单个设备</td></tr>
+                <tr><td>点击连线</td><td>选中单条连线</td></tr>
+                <tr><td><code>Shift + 点击</code></td><td>添加到选择集</td></tr>
+                <tr><td>框选</td><td>拖动选择框选中多个设备</td></tr>
+            </table>
+            
+            <h3>4.4 移动设备</h3>
+            <ol>
+                <li>在选择工具模式下</li>
+                <li>点击选中设备</li>
+                <li>拖动设备到目标位置</li>
+                <li>多选后可同时移动多个设备</li>
+            </ol>
+            
+            <h3>4.5 删除对象</h3>
+            <ol>
+                <li>选中要删除的对象</li>
+                <li>按 <code>Delete</code> 键</li>
+                <li>或在属性面板点击删除按钮</li>
+            </ol>
+            
+            <h2 id="section5">5. 产品管理</h2>
+            
+            <h3>5.1 打开产品管理</h3>
+            <ol>
+                <li>点击菜单栏 <strong>「设置」</strong></li>
+                <li>选择 <strong>「产品管理」</strong></li>
+                <li>弹出产品管理对话框</li>
+            </ol>
+            
+            <h3>5.2 添加产品</h3>
+            <ol>
+                <li>点击 <strong>「添加产品」</strong> 按钮</li>
+                <li>填写产品信息：
+                    <ul>
+                        <li><strong>编码</strong>：产品唯一标识</li>
+                        <li><strong>名称</strong>：产品显示名称</li>
+                        <li><strong>颜色</strong>：在图表中显示的颜色</li>
+                    </ul>
+                </li>
+                <li>点击颜色块选择颜色</li>
+                <li>点击「确定」保存</li>
+            </ol>
+            
+            <h3>5.3 设置产品物料清单 (BOM)</h3>
+            <ol>
+                <li>在产品列表中选中产品</li>
+                <li>点击 <strong>「编辑」</strong> 按钮</li>
+                <li>在弹出的编辑器中</li>
+                <li>点击「添加原料」</li>
+                <li>选择原料类型（已在原料管理中创建）</li>
+                <li>输入每个产品消耗的原料数量</li>
+                <li>点击「确定」保存</li>
+            </ol>
+            
+            <h3>5.4 删除产品</h3>
+            <ol>
+                <li>在产品列表中选中产品</li>
+                <li>点击 <strong>「删除」</strong> 按钮</li>
+                <li>确认删除操作</li>
+            </ol>
+            
+            <h2 id="section6">6. 物料管理</h2>
+            
+            <h3>6.1 打开物料管理</h3>
+            <ol>
+                <li>点击菜单栏 <strong>「设置」</strong></li>
+                <li>选择 <strong>「物料管理」</strong></li>
+                <li>弹出物料管理对话框</li>
+            </ol>
+            
+            <h3>6.2 创建物料</h3>
+            <ol>
+                <li>点击 <strong>「添加物料」</strong> 按钮</li>
+                <li>填写物料信息：
+                    <ul>
+                        <li><strong>编码</strong>：物料唯一标识</li>
+                        <li><strong>名称</strong>：物料显示名称</li>
+                        <li><strong>单位</strong>：计量单位（如：个、千克、米）</li>
+                    </ul>
+                </li>
+                <li>点击「确定」保存</li>
+            </ol>
+            
+            <h3>6.3 删除物料</h3>
+            <ol>
+                <li>在物料列表中选中物料</li>
+                <li>点击 <strong>「删除」</strong> 按钮</li>
+                <li>确认删除操作</li>
+            </ol>
+            
+            <h2 id="section7">7. 设备创建与配置</h2>
+            
+            <h3>7.1 起点 (StartNode)</h3>
+            <p><strong>创建步骤：</strong></p>
+            <ol>
+                <li>在工具箱点击起点图标</li>
+                <li>在画布上点击创建</li>
+            </ol>
+            
+            <p><strong>属性配置：</strong></p>
+            <table>
+                <tr><th>属性</th><th>说明</th><th>设置方法</th></tr>
+                <tr><td>名称</td><td>设备显示名称</td><td>在属性面板输入</td></tr>
+                <tr><td>产品</td><td>起点生成的产品</td><td>在「产品设置」标签选择</td></tr>
+                <tr><td>生成间隔</td><td>产品生成的时间间隔</td><td>输入秒数</td></tr>
+                <tr><td>初始数量</td><td>模拟开始时的初始产品数</td><td>输入数量</td></tr>
+                <tr><td>目标产量</td><td>固定产量模式下的投料目标</td><td>输入数量（固定产量模式时使用）</td></tr>
+                <tr><td>投料设置</td><td>原料消耗配置</td><td>在「投料设置」标签配置</td></tr>
+            </table>
+            
+            <p><strong>目标产量说明：</strong></p>
+            <ul>
+                <li>仅在「固定产量」模拟模式下生效</li>
+                <li>设置起点需要投料的产品数量</li>
+                <li>当投料数量达到目标产量后，起点停止投料</li>
+                <li>如果不设置或设置为0，表示不限量投料</li>
+            </ul>
+            
+            <p><strong>投料设置：</strong></p>
+            <ol>
+                <li>切换到「投料设置」标签</li>
+                <li>点击「添加投料」</li>
+                <li>选择原料类型</li>
+                <li>设置每个产品消耗的原料数量</li>
+            </ol>
+            
+            <h3>7.2 终点 (EndNode)</h3>
+            <p><strong>创建步骤：</strong></p>
+            <ol>
+                <li>在工具箱点击终点图标</li>
+                <li>在画布上点击创建</li>
+            </ol>
+            
+            <p><strong>属性配置：</strong></p>
+            <table>
+                <tr><th>属性</th><th>说明</th></tr>
+                <tr><td>名称</td><td>设备显示名称</td></tr>
+                <tr><td>产品</td><td>接收的产品类型</td></tr>
+            </table>
+            
+            <h3>7.3 设备 (Station)</h3>
+            <p><strong>创建步骤：</strong></p>
+            <ol>
+                <li>在工具箱点击矩形或圆形图标</li>
+                <li>在画布上点击创建</li>
+            </ol>
+            
+            <p><strong>属性配置：</strong></p>
+            <table>
+                <tr><th>标签</th><th>属性</th><th>说明</th></tr>
+                <tr><td>基础信息</td><td>名称</td><td>设备显示名称</td></tr>
+                <tr><td>基础信息</td><td>宽度/高度</td><td>设备尺寸（毫米）</td></tr>
+                <tr><td>产品设置</td><td>允许产品</td><td>选择可加工的产品</td></tr>
+                <tr><td>加工设置</td><td>加工时间</td><td>加工一个产品所需时间（秒）</td></tr>
+            </table>
+            
+            <p><strong>设置加工产品：</strong></p>
+            <ol>
+                <li>切换到「产品设置」标签</li>
+                <li>勾选允许加工的产品</li>
+                <li>如果不勾选任何产品，则表示可加工所有产品</li>
+            </ol>
+            
+            <p><strong>设置加工时间：</strong></p>
+            <ol>
+                <li>切换到「加工设置」标签</li>
+                <li>选择「进料规则」，"即来即产"表示产品生成后立即加工；"集齐后加工"用于有多个上游设备的情况，只有当所有上游设备加工的产品都到达最少一个时才会开始加工</li>
+                <li>「分布类型」的选择影响设备加工时间的随机生成方法，可选择"正态分布"、"均匀分布"、"指数分布"、"三角分布"，然后根据出现的属性填写时间参数。如"正态分布"只填写平均值的话，则会默认使用标准差为 0 的正态分布。</li>
+            </ol>
+            
+            <p><strong>设置产品加工时间：</strong></p>
+            <ol>
+                <li>在「加工设置」标签中，可以为不同产品设置不同的加工时间</li>
+                <li>点击「添加产品加工时间」按钮</li>
+                <li>选择要设置的产品</li>
+                <li>为该产品设置专门的加工时间和分布类型</li>
+                <li>如果某个产品没有专门设置，则使用默认的加工时间</li>
+                <li>可以添加多个产品的加工时间配置</li>
+            </ol>
+            
+            <p><strong>产品加工时间优先级：</strong></p>
+            <ul>
+                <li>如果为某个产品专门设置了加工时间，则使用该设置</li>
+                <li>如果没有专门设置，则使用默认的加工时间</li>
+                <li>这样可以灵活地为不同产品设置不同的加工时长</li>
+            </ul>
+            
+            <p><strong>设置产品加工工具：</strong></p>
+            <ol>
+                <li>在「加工设置」标签中，展开产品配置</li>
+                <li>在「加工工具」区域，勾选该产品需要的工具</li>
+                <li>对于已选中的工具，可以设置该工具的安装时间（秒）</li>
+                <li>安装时间同时也是卸载时间</li>
+                <li>每个产品可选择多个工具，每个工具可单独设置安装时间</li>
+            </ol>
+            
+            <p><strong>工具切换时间计算规则：</strong></p>
+            <ul>
+                <li><strong>首次加工：</strong>如果是工作站的第一次加工，需要安装所有需要的工具，切换时间 = 所有工具安装时间之和</li>
+                <li><strong>相同产品：</strong>如果本次加工的产品与上次相同，无需切换工具，切换时间 = 0</li>
+                <li><strong>不同产品：</strong>如果本次加工的产品与上次不同，需要计算工具切换时间：
+                    <ul>
+                        <li>卸载不再使用的工具（卸载时间 = 安装时间）</li>
+                        <li>安装新需要的工具</li>
+                        <li>切换时间 = 卸载工具时间 + 安装工具时间</li>
+                    </ul>
+                </li>
+                <li><strong>示例：</strong>上次使用工具A(10s)、B(15s)，本次使用工具B(15s)、C(20s)
+                    <ul>
+                        <li>需要卸载：工具A(10s)</li>
+                        <li>需要安装：工具C(20s)</li>
+                        <li>切换时间 = 10s + 20s = 30s（工具B已安装，无需切换）</li>
+                    </ul>
+                </li>
+            </ul>
+            
+            <p><strong>甘特图中的工具切换显示：</strong></p>
+            <ul>
+                <li>工具切换时间在甘特图中以橙色色块显示</li>
+                <li>加工任务以产品颜色显示</li>
+                <li>鼠标悬停可查看详细信息</li>
+            </ul>
+            
+            <h3>7.4 仓库 (Warehouse)</h3>
+            <p><strong>创建步骤：</strong></p>
+            <ol>
+                <li>在工具箱展开仓储菜单</li>
+                <li>点击仓库图标</li>
+                <li>在画布上点击创建</li>
+            </ol>
+            
+            <p><strong>属性配置：</strong></p>
+            <table>
+                <tr><th>标签</th><th>属性</th><th>说明</th></tr>
+                <tr><td>基础信息</td><td>名称</td><td>设备显示名称</td></tr>
+                <tr><td>产品设置</td><td>允许产品</td><td>选择可存储的产品</td></tr>
+                <tr><td>仓库设置</td><td>容量</td><td>最大存储数量</td></tr>
+                <tr><td>仓库设置</td><td>投放模式</td><td>向下游投放所存储的产品的方式，默认为"等待空闲"，指当下游设备空闲时才会投放，可选为"立即投放"，指当仓库有产品时就会向下游运送</td></tr>
+            </table>
+            
+            <h3>7.5 临时堆场 (TempStore)</h3>
+            <p><strong>创建步骤：</strong></p>
+            <ol>
+                <li>在工具箱展开仓储菜单</li>
+                <li>点击临时堆场图标</li>
+                <li>在画布上点击创建</li>
+            </ol>
+            
+            <p><strong>属性配置：</strong></p>
+            <table>
+                <tr><th>标签</th><th>属性</th><th>说明</th></tr>
+                <tr><td>基础信息</td><td>名称</td><td>设备显示名称</td></tr>
+                <tr><td>产品设置</td><td>允许产品</td><td>选择可存储的产品</td></tr>
+                <tr><td>投放设置</td><td>投放模式</td><td>向下游投放所存储的产品的方式，默认为"等待空闲"，指当下游设备空闲时才会投放，可选为"立即投放"，指当仓库有产品时就会向下游运送</td></tr>
+            </table>
+            
+            <h3>7.6 缓冲区 (Buffer)</h3>
+            <p><strong>创建步骤：</strong></p>
+            <ol>
+                <li>在工具箱点击缓冲区图标</li>
+                <li>在画布上点击创建</li>
+            </ol>
+            
+            <p><strong>属性配置：</strong></p>
+            <table>
+                <tr><th>标签</th><th>属性</th><th>说明</th></tr>
+                <tr><td>基础信息</td><td>名称</td><td>设备显示名称</td></tr>
+                <tr><td>产品设置</td><td>允许产品</td><td>选择可存储的产品</td></tr>
+                <tr><td>缓冲区设置</td><td>容量</td><td>最大存储数量</td></tr>
+            </table>
+            
+            <p><strong>缓冲区使用规则：</strong></p>
+            <p>缓冲区用于平衡上下游工序的生产节拍，当上游生产速度快于下游时，缓冲区暂存产品，避免上游阻塞；当下游需要产品时，缓冲区按先进先出原则释放产品。</p>
+            
+            <p><strong>典型使用场景：</strong></p>
+            <ul>
+                <li>上游加工站生产速度快于下游，需要暂存产品</li>
+                <li>多个上游加工站共用一个下游加工站，需要缓冲区汇聚产品</li>
+                <li>需要控制投料节奏，防止在制品过多</li>
+            </ul>
+            
+            <p><strong>缓冲区控制逻辑：</strong></p>
+            <ol>
+                <li><strong>入站运输（上游产品进入缓冲区）：</strong>
+                    <ul>
+                        <li>缓冲区达到最大容量时不再接收新产品</li>
+                        <li>收集所有直接连接到缓冲区的上游加工站中等待运输的产品</li>
+                        <li>按到达时间FIFO排序，优先运输最早到达的产品</li>
+                        <li>遍历所有上游加工站，每个站运输排序后的第一个等待运输产品</li>
+                        <li>每运入一个产品，缓冲区当前库存加1，达到容量上限则停止</li>
+                    </ul>
+                </li>
+                <li><strong>出站释放（缓冲区产品送往下游）：</strong>
+                    <ul>
+                        <li>仅当下游设备（加工站、装配站、终点）的有效在制品数（WIP + 在途 + 加工中）≤ 2 时，才允许释放产品</li>
+                        <li>按产品进入缓冲区的先后顺序，优先释放最早进入的产品</li>
+                        <li>按基础规则（产品匹配 → 优先空闲 → 距离最近）选择下游目标设备</li>
+                        <li>出站释放成功后，会立即检查缓冲区容量并尝试从上游继续运入产品</li>
+                    </ul>
+                </li>
+                <li><strong>容量管控（投料控制）：</strong>
+                    <ul>
+                        <li>潜在库存 = 缓冲区当前库存 + 所有上游加工站的等待运输产品数之和</li>
+                        <li>当潜在库存 ≥ 缓冲区最大容量时，上游路径对应的所有起点暂停投料</li>
+                        <li>当潜在库存 < 缓冲区最大容量时，恢复已暂停起点的投料</li>
+                        <li>系统沿缓冲区的上游路径回溯，找到所有直接或间接向缓冲区供货的起点节点</li>
+                    </ul>
+                </li>
+            </ol>
+            
+            <h3>7.7 车间 (Workshop)</h3>
+            <p><strong>创建步骤：</strong></p>
+            <ol>
+                <li>在工具箱点击车间图标</li>
+                <li>在画布上点击创建</li>
+            </ol>
+            
+            <p><strong>属性配置：</strong></p>
+            <table>
+                <tr><th>标签</th><th>属性</th><th>说明</th></tr>
+                <tr><td>基础信息</td><td>名称</td><td>设备显示名称</td></tr>
+            </table>
+            
+            <h3>7.8 装配站 (AssemblyStation)</h3>
+            <p><strong>创建步骤：</strong></p>
+            <ol>
+                <li>在工具箱点击装配站图标</li>
+                <li>在画布上点击创建</li>
+            </ol>
+            
+            <p><strong>功能说明：</strong></p>
+            <p>装配站用于将多个上游设备的产品组装成一个产品。它接收来自多个上游节点的产品，当所需的上游产品都到达后，进行组装加工，产出最终产品。</p>
+            
+            <p><strong>属性配置：</strong></p>
+            <table>
+                <tr><th>标签</th><th>属性</th><th>说明</th></tr>
+                <tr><td>基础信息</td><td>名称</td><td>设备显示名称</td></tr>
+                <tr><td>产品设置</td><td>允许产品</td><td>选择可装配的产品</td></tr>
+                <tr><td>加工设置</td><td>加工时间</td><td>装配一个产品所需时间（秒）</td></tr>
+            </table>
+            
+            <p><strong>设置装配产品：</strong></p>
+            <ol>
+                <li>切换到「产品设置」标签</li>
+                <li>勾选允许装配的产品</li>
+                <li>每个产品可以设置独立的上游来料需求</li>
+            </ol>
+            
+            <p><strong>设置上游来料需求：</strong></p>
+            <ol>
+                <li>在「产品设置」标签中，展开已选产品的配置</li>
+                <li>在「上游来料需求」区域，可以看到所有连接到装配站的上游节点</li>
+                <li>为每个上游节点设置装配一个产品所需的来料数量</li>
+                <li><strong>重要：</strong>所有上游节点的需求量必须大于0，否则检查时会报错</li>
+            </ol>
+            
+            <p><strong>装配逻辑说明：</strong></p>
+            <ul>
+                <li>装配站会等待所有上游节点的产品到达</li>
+                <li>当每个上游节点的产品数量都达到设定的需求量时，才开始装配</li>
+                <li>装配完成后，产出一个产品送往下游</li>
+                <li>例如：产品A需要上游节点1的2件产品和上游节点2的3件产品，则只有当节点1有2件、节点2有3件产品时，才会开始装配</li>
+            </ul>
+            
+            <p><strong>检查要求：</strong></p>
+            <p>在模拟前检查时，装配站需要满足以下条件：</p>
+            <ol>
+                <li>必须选择至少一个可装配的产品</li>
+                <li>对于每个已选产品，必须设置上游来料需求</li>
+                <li>每个上游节点的需求量必须大于0</li>
+                <li>如果检查不通过，将显示错误信息，无法开始模拟</li>
+            </ol>
+            
+            <p><strong>加工时间设置：</strong></p>
+            <p>与普通工作站相同，装配站支持：</p>
+            <ul>
+                <li>为不同产品设置不同的加工时间</li>
+                <li>选择分布类型（正态分布、均匀分布、指数分布、三角分布）</li>
+                <li>设置工具及安装时间</li>
+            </ul>
+            
+            <h2 id="section8">8. 连线创建与配置</h2>
+            
+            <h3>8.1 创建连线</h3>
+            <ol>
+                <li>在工具箱选择连线类型</li>
+                <li>将鼠标移到源设备边缘的锚点上（设备边缘的小圆点）点击一下</li>
+                <li>鼠标移动到目标设备的锚点，再点击一下，完成连线</li>
+                <li>连线既代表了节点之间的关联关系，也标明了上下游关系，同时也是节点之间的运输路线（起点到下游，节点到终点的连线除外），连线的长度就是运输路线长度</li>
+            </ol>
+            
+            <h3>8.2 连线类型</h3>
+            <table>
+                <tr><th>类型</th><th>图标</th><th>适用场景</th></tr>
+                <tr><td>直线</td><td>—</td><td>简单连接，无障碍物</td></tr>
+                <tr><td>肘形连线</td><td>⌐</td><td>自动生成折线，可拖动调整拐点</td></tr>
+                <tr><td>曲线</td><td>⌒</td><td>美观展示</td></tr>
+                <tr><td>手动折线</td><td>⌈</td><td>自定义路径</td></tr>
+            </table>
+            
+            <h3>8.3 连线属性配置</h3>
+            <p>选中连线后，在右侧属性面板配置：</p>
+            
+            <p><strong>基础信息标签：</strong></p>
+            <table>
+                <tr><th>属性</th><th>说明</th></tr>
+                <tr><td>名称</td><td>连线显示名称</td></tr>
+                <tr><td>长度</td><td>连线长度（米），自动根据画布上的位置计算</td></tr>
+                <tr><td>起点</td><td>源设备名称</td></tr>
+                <tr><td>终点</td><td>目标设备名称</td></tr>
+            </table>
+            
+            <p><strong>运输设置标签：</strong></p>
+            <table>
+                <tr><th>属性</th><th>说明</th></tr>
+                <tr><td>运输模式</td><td>连续运输 / 离散运输</td></tr>
+                <tr><td>运输时间</td><td>运输所需时间（秒）</td></tr>
+                <tr><td>小车数量</td><td>离散运输模式的小车数量</td></tr>
+                <tr><td>单次运量</td><td>每辆小车单次最大运输量</td></tr>
+                <tr><td>最大并发数</td><td>在连续运输模式下，路线可同时承载的最大产品数</td></tr>
+            </table>
+            
+            <h3>8.4 运输模式说明</h3>
+            <p><strong>连续运输：</strong></p>
+            <ul>
+                <li>传送带式的运输</li>
+                <li>适合流水线生产</li>
+                <li>可设置同时传送带能够承载的产品数，默认为不限数量</li>
+            </ul>
+            
+            <p><strong>离散运输：</strong></p>
+            <ul>
+                <li>小车批量运输</li>
+                <li>需设置小车数量和单次运量</li>
+                <li>运输记录包含批次信息</li>
+            </ul>
+            
+            <h2 id="section9">9. 模拟运行</h2>
+            
+            <h3>9.1 打开模拟控制面板</h3>
+            <ol>
+                <li>模拟控制面板默认打开，在界面底部</li>
+                <li>可点击菜单栏 <strong>「模拟」</strong></li>
+                <li>选择 <strong>「隐藏/显示模拟控制面板」</strong>，控制是否显示模拟控制面板</li>
+            </ol>
+            
+            <h3>9.2 设置模拟参数</h3>
+            
+            <p><strong>模拟时长：</strong></p>
+            <ol>
+                <li>点击「设置」按钮，打开下方设置面板</li>
+                <li>在「模拟时长」输入框输入秒数</li>
+                <li>或使用增减按钮调整</li>
+                <li>默认为 3600 秒（1小时）</li>
+            </ol>
+            
+            <p><strong>模拟速度：</strong></p>
+            <ol>
+                <li>拖动速度滑块</li>
+                <li>可选范围：1x ~ 100x</li>
+                <li>常用速度：1x、2x、5x、10x、50x、100x</li>
+            </ol>
+            
+            <p><strong>动态平衡算法：</strong></p>
+            <ol>
+                <li>选择算法类型：
+                    <ul>
+                        <li><strong>无</strong>：使用基础规则</li>
+                        <li><strong>动态平衡算法(在制品)</strong>：根据在制品数量选择路线</li>
+                        <li><strong>动态平衡算法(设备利用率)</strong>：根据设备利用率选择路线</li>
+                    </ul>
+                </li>
+            </ol>
+            
+            <p><strong>模拟模式：</strong></p>
+            <ol>
+                <li>点击「模拟模式」下拉菜单选择模拟结束条件：
+                    <ul>
+                        <li><strong>固定时长</strong>：按照设定的模拟时长运行，模拟到达设定时长后结束（默认模式）</li>
+                        <li><strong>固定产量</strong>：按照设定的目标产量运行，当所有起点达到目标产量且所有产品到达终点后结束</li>
+                    </ul>
+                </li>
+                <li>选择「固定产量」模式时，需要在起点的属性中设置目标产量</li>
+            </ol>
+            
+            <h3>9.3 运行模拟</h3>
+            
+            <p><strong>获取工艺路线：</strong></p>
+            <ol>
+                <li>点击 <strong>「获取工艺路线」</strong> 按钮</li>
+                <li>获取模型中所有产品的工艺路线，所有选择的产品最少应有一条完整的工艺路线</li>
+                <li>可点击 <strong>「查看工艺路线」</strong> 按钮，查看工艺路线</li>
+            </ol>
+            
+            <p><strong>开始模拟：</strong></p>
+            <ol>
+                <li>点击 <strong>「开始」</strong> 按钮</li>
+                <li>模拟开始运行</li>
+                <li>状态显示为「运行中」</li>
+            </ol>
+            
+            <p><strong>暂停模拟：</strong></p>
+            <ol>
+                <li>模拟运行中点击 <strong>「暂停」</strong> 按钮</li>
+                <li>模拟暂停</li>
+                <li>状态显示为「已暂停」</li>
+            </ol>
+            
+            <p><strong>继续模拟：</strong></p>
+            <ol>
+                <li>暂停状态下点击 <strong>「继续」</strong> 按钮</li>
+                <li>模拟继续运行</li>
+            </ol>
+            
+            <p><strong>重置模拟：</strong></p>
+            <ol>
+                <li>点击 <strong>「重置」</strong> 按钮</li>
+                <li>模拟状态清零</li>
+                <li>所有设备恢复初始状态</li>
+            </ol>
+            
+            <h3>9.4 查看模拟状态</h3>
+            <p>模拟控制面板显示：</p>
+            <table>
+                <tr><th>信息</th><th>说明</th></tr>
+                <tr><td>状态</td><td>空闲/运行中/已暂停/已完成</td></tr>
+                <tr><td>已运行时间</td><td>当前模拟已运行的时间</td></tr>
+                <tr><td>总时长</td><td>设置的模拟总时长</td></tr>
+                <tr><td>完成产品</td><td>已到达终点的产品数量</td></tr>
+                <tr><td>模拟速度</td><td>当前模拟速度</td></tr>
+            </table>
+            
+            <h2 id="section10">10. 统计分析</h2>
+            
+            <h3>10.1 打开统计记录</h3>
+            <ol>
+                <li>点击模拟控制面板的 <strong>「保存模拟记录」</strong>，可将本次模拟的结果保存进历史记录进行查看，没有保存时看不到模拟结果数据</li>
+                <li>选择 <strong>「查看历史记录」</strong></li>
+                <li>弹出模拟统计记录窗口</li>
+            </ol>
+            
+            <h3>10.2 查看记录列表</h3>
+            <p>上方显示模拟记录列表：</p>
+            <table>
+                <tr><th>列</th><th>说明</th></tr>
+                <tr><td>时长</td><td>模拟运行时长</td></tr>
+                <tr><td>完成产品</td><td>完成加工的产品总数</td></tr>
+                <tr><td>整体最大在制品数</td><td>整个模拟过程中，所有节点汇总的最大在制品数</td></tr>
+            </table>
+            
+            <h3>10.3 查看详细统计</h3>
+            <p>选中一条历史记录后，下方显示详细统计：</p>
+            
+            <p><strong>图表展示：</strong></p>
+            <table>
+                <tr><th>图表</th><th>说明</th></tr>
+                <tr><td>完成产品数</td><td>按产品种类显示完成数量</td></tr>
+                <tr><td>产品平均处理时长</td><td>按产品种类显示平均处理时长柱状图</td></tr>
+                <tr><td>原料消耗量</td><td>按原料种类显示消耗量</td></tr>
+                <tr><td>设备利用率</td><td>各设备的利用率百分比</td></tr>
+                <tr><td>设备加工数量</td><td>各设备加工各产品的数量</td></tr>
+                <tr><td>设备最大在制品</td><td>各设备的最大在制品数</td></tr>
+                <tr><td>仓库利用率</td><td>各仓库的最大利用率</td></tr>
+                <tr><td>路径利用率</td><td>各连线路径的利用率</td></tr>
+                <tr><td>甘特图</td><td>设备加工时间线，显示各产品的加工时段</td></tr>
+            </table>
+            
+            <p><strong>颜色说明（仓库利用率）：</strong></p>
+            <table>
+                <tr><th>利用率</th><th>颜色</th></tr>
+                <tr><td>≥90%</td><td>红色</td></tr>
+                <tr><td>≥70%</td><td>橙色</td></tr>
+                <tr><td>≥50%</td><td>蓝色</td></tr>
+                <tr><td>&lt;50%</td><td>绿色</td></tr>
+            </table>
+            
+            <p><strong>仓库统计图表：</strong></p>
+            <table>
+                <tr><th>图表</th><th>说明</th></tr>
+                <tr><td>仓库最大利用率</td><td>各仓库的最大利用率柱状图</td></tr>
+                <tr><td>仓库最大等待入库量和库存量</td><td>各仓库的最大库存量（蓝色）和最大等待入库量（红色）的分组柱状图</td></tr>
+            </table>
+            
+            <h3>10.4 查看设备详细记录</h3>
+            <ol>
+                <li>在统计页面点击「设备统计」标签</li>
+                <li>选择要查看的设备</li>
+                <li>显示该设备的详细加工记录：
+                    <ul>
+                        <li>产品编码</li>
+                        <li>加工品序号</li>
+                        <li>任务类型（加工任务/工具切换）</li>
+                        <li>到达时间</li>
+                        <li>开始时间</li>
+                        <li>完成时间</li>
+                        <li>运出时间（产品真正开始运输的时间，若未运出则显示"-"）</li>
+                        <li>加工时长</li>
+                        <li>开始时等待加工数（该产品开始加工时，当前设备上等待加工的产品数量）</li>
+                        <li>开始时等待运输数（该产品开始加工时，当前设备上等待运输的产品数量）</li>
+                        <li>使用原料</li>
+                    </ul>
+                </li>
+            </ol>
+            
+            <p><strong>设备统计指标：</strong></p>
+            <table>
+                <tr><th>指标</th><th>说明</th></tr>
+                <tr><td>最大等待加工数</td><td>模拟过程中设备等待加工产品数的最大值</td></tr>
+                <tr><td>最大等待运输数</td><td>模拟过程中设备等待运输产品数的最大值</td></tr>
+                <tr><td>平均加工时间</td><td>设备加工各产品的平均时间</td></tr>
+            </table>
+            
+            <h3>10.5 查看仓库/缓冲区详细记录</h3>
+            <ol>
+                <li>在统计页面点击「存储统计」标签</li>
+                <li>选择要查看的仓库或缓冲区</li>
+                <li>显示该存储设备的详细统计信息：
+                    <ul>
+                        <li>最终暂存量</li>
+                        <li>最大暂存量</li>
+                        <li>最大等待入库数</li>
+                        <li>最大利用率</li>
+                        <li>变化记录数</li>
+                    </ul>
+                </li>
+            </ol>
+            
+            <p><strong>存储设备统计图表：</strong></p>
+            <table>
+                <tr><th>图表</th><th>说明</th></tr>
+                <tr><td>库存利用率变化</td><td>存储设备利用率随时间的变化曲线</td></tr>
+                <tr><td>库存量与等待入库量变化</td><td>库存量（蓝色）和等待入库量（红色）随时间的变化曲线，每秒更新一次</td></tr>
+            </table>
+            
+            <p><strong>变化记录详情：</strong></p>
+            <table>
+                <tr><th>字段</th><th>说明</th></tr>
+                <tr><td>时间</td><td>变化发生的时间</td></tr>
+                <tr><td>类型</td><td>入库/出库</td></tr>
+                <tr><td>当前暂存量</td><td>变化后的库存数量</td></tr>
+                <tr><td>最大容量</td><td>存储设备的最大容量</td></tr>
+                <tr><td>过程产品ID</td><td>相关产品的唯一标识</td></tr>
+                <tr><td>到达时间</td><td>产品到达存储设备的时间</td></tr>
+                <tr><td>入库时间</td><td>产品实际入库的时间</td></tr>
+            </table>
+            
+            <h3>10.6 查看连线详细记录</h3>
+            <ol>
+                <li>在统计页面点击「连线统计」标签</li>
+                <li>选择要查看的连线</li>
+                <li>显示该连线的详细运输记录：
+                    <ul>
+                        <li>运输批次（离散运输模式）</li>
+                        <li>过程产品ID</li>
+                        <li>产品编码</li>
+                        <li>运送序号</li>
+                        <li>开始时间</li>
+                        <li>完成时间</li>
+                        <li>用时</li>
+                    </ul>
+                </li>
+            </ol>
+            
+            <h3>10.7 导出模拟记录</h3>
+            
+            <p><strong>导出PDF：</strong></p>
+            <ol>
+                <li>在模拟记录窗口中，选中一条记录</li>
+                <li>点击 <strong>「导出PDF」</strong> 按钮</li>
+                <li>在弹出的文件保存对话框中选择保存位置和文件名</li>
+                <li>系统将模拟记录的完整统计信息导出为PDF文件，包含：
+                    <ul>
+                        <li>模拟概要信息</li>
+                        <li>完成产品统计</li>
+                        <li>产品平均处理时长</li>
+                        <li>原料消耗统计</li>
+                        <li>设备利用率</li>
+                        <li>设备加工数量</li>
+                        <li>设备最大在制品</li>
+                        <li>仓库利用率</li>
+                        <li>路径利用率</li>
+                        <li>甘特图</li>
+                    </ul>
+                </li>
+            </ol>
+            
+            <p><strong>导出Excel：</strong></p>
+            <ol>
+                <li>在模拟记录窗口中，选中一条记录</li>
+                <li>点击 <strong>「导出Excel」</strong> 按钮</li>
+                <li>在弹出的文件保存对话框中选择保存位置和文件名</li>
+                <li>系统将模拟记录的详细数据导出为Excel文件，包含：
+                    <ul>
+                        <li>完成产品统计</li>
+                        <li>原料消耗统计</li>
+                        <li>各设备加工记录</li>
+                        <li>各连线运输记录</li>
+                        <li>仓库变化记录</li>
+                        <li>投料记录</li>
+                    </ul>
+                </li>
+            </ol>
+            
+            <h3>10.8 查看甘特图</h3>
+            <p>甘特图以时间线形式展示各设备的加工情况，直观显示生产过程。</p>
+            
+            <p><strong>甘特图说明：</strong></p>
+            <ul>
+                <li><strong>横轴</strong>：时间（分钟）</li>
+                <li><strong>纵轴</strong>：设备名称</li>
+                <li><strong>色块</strong>：表示连续加工某种产品的时段</li>
+                <li><strong>色块内数字</strong>：该时段内连续加工的产品数量</li>
+                <li><strong>颜色</strong>：不同产品使用不同颜色区分</li>
+            </ul>
+            
+            <p><strong>查看甘特图：</strong></p>
+            <ol>
+                <li>在统计页面找到「甘特图（设备加工时间线）」</li>
+                <li>图表自动显示所有加工站的加工时间线</li>
+                <li>每个色块代表一个连续加工时段</li>
+                <li>鼠标悬停在色块上可查看详细信息</li>
+            </ol>
+            
+            <p><strong>甘特图合并规则：</strong></p>
+            <ul>
+                <li>相同产品的连续加工记录会合并为一个色块</li>
+                <li>如果相同产品的两次加工间隔超过1秒，会显示为两个独立的色块</li>
+                <li>不同产品的加工记录始终显示为独立的色块</li>
+            </ul>
+            
+            <h2 id="section11">11. 文件操作</h2>
+            
+            <h3>11.1 保存布局</h3>
+            <p><strong>方法一：菜单保存</strong></p>
+            <ol>
+                <li>点击「文件」→「保存」</li>
+                <li>首次保存会弹出保存对话框</li>
+                <li>选择位置并输入文件名</li>
+                <li>点击「保存」</li>
+            </ol>
+            
+            <p><strong>方法二：另存为</strong></p>
+            <ol>
+                <li>点击「文件」→「另存为」</li>
+                <li>选择新位置或新文件名</li>
+                <li>点击「保存」</li>
+            </ol>
+            
+            <h3>11.2 打开布局</h3>
+            <ol>
+                <li>点击「文件」→「打开」</li>
+                <li>选择 <code>.json</code> 格式的布局文件</li>
+                <li>点击「打开」</li>
+            </ol>
+            
+            <h3>11.3 文件格式说明</h3>
+            <p>布局文件为 JSON 格式，包含：</p>
+            <ul>
+                <li>画布尺寸设置</li>
+                <li>所有设备配置</li>
+                <li>所有连线配置</li>
+                <li>产品定义</li>
+                <li>物料定义</li>
+            </ul>
+            
+            <h2 id="section12">12. 快捷键参考</h2>
+            <table>
+                <tr><th>快捷键</th><th>功能</th></tr>
+                <tr><td><code>Delete</code></td><td>删除选中对象</td></tr>
+                <tr><td><code>Ctrl + S</code></td><td>保存布局</td></tr>
+                <tr><td><code>Ctrl + O</code></td><td>打开布局</td></tr>
+                <tr><td><code>Ctrl + N</code></td><td>新建画布</td></tr>
+                <tr><td><code>Ctrl + Z</code></td><td>撤销</td></tr>
+                <tr><td><code>Ctrl + Y</code></td><td>重做</td></tr>
+                <tr><td><code>Ctrl + A</code></td><td>全选</td></tr>
+                <tr><td><code>Esc</code></td><td>取消选择</td></tr>
+            </table>
+            
+            <hr>
+            
+            <h2>附录：常见问题</h2>
+            
+            <h3>Q1: 如何创建一个完整的生产线模型？</h3>
+            <ol>
+                <li>创建起点，设置产品和生成间隔</li>
+                <li>创建工作站，设置加工时间和允许产品</li>
+                <li>用连线连接起点到工作站</li>
+                <li>继续添加工作站和连线</li>
+                <li>创建终点，连接到最后的工作站</li>
+                <li>在产品管理中设置工艺路线</li>
+            </ol>
+            
+            <h3>Q2: 模拟没有产品产出怎么办？</h3>
+            <p>检查以下设置：</p>
+            <ol>
+                <li>起点是否设置了产品</li>
+                <li>工作站是否允许加工该产品</li>
+                <li>连线是否正确连接</li>
+                <li>产品工艺路线是否配置</li>
+            </ol>
+            
+            <h3>Q3: 如何实现产品分流？</h3>
+            <ol>
+                <li>从一个设备创建多条连线到不同设备</li>
+                <li>在模拟设置中选择动态平衡算法</li>
+                <li>系统会根据算法自动分配产品</li>
+            </ol>
+            
+            <h3>Q4: 仓库容量不足怎么办？</h3>
+            <ol>
+                <li>选中仓库</li>
+                <li>在属性面板增加容量值</li>
+            </ol>
+        </div>
+        
+        <div class="footer">
+            <p><strong>技术支持：</strong> <a href="https://www.enduslab.com" target="_blank">www.enduslab.com</a></p>
+            <p>版权所有 © 2026 上海云图数镜软件技术有限公司</p>
+        </div>
+    </div>
+</body>
+</html>
