@@ -1,0 +1,9 @@
+# 忽略 Tauri 编译产生的所有超大文件（必加）
+src-tauri/target/
+src-tauri/build/
+
+# 通用编译缓存
+node_modules/
+dist/
+.DS_Store
+*.log
