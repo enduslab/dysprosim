@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../store';
-import type { ResourceSelectionRule, Device, SimulationMode, EndNode } from '../types';
+import type { ResourceSelectionRule, Device, SimulationMode, EndNode, WarehouseSelectionPriority } from '../types';
 import { calculateConnectionLengthMm, calculateElbowIntermediatePoints, getDeviceAnchorPx } from '../utils/connectionUtils';
 import ProductRoutesModal from './ProductRoutesModal';
 import ValidationErrorModal from './ValidationErrorModal';
@@ -19,6 +19,7 @@ export default function SimControlPanel() {
   const setResourceSelectionRule = useAppStore((state) => state.setResourceSelectionRule);
   const setSimulationMode = useAppStore((state) => state.setSimulationMode);
   const setUtilizationSampleInterval = useAppStore((state) => state.setUtilizationSampleInterval);
+  const setWarehouseSelectionPriorities = useAppStore((state) => state.setWarehouseSelectionPriorities);
   const loadSimulationState = useAppStore((state) => state.loadSimulationState);
   const saveSimulationRecord = useAppStore((state) => state.saveSimulationRecord);
   const openRecordsModal = useAppStore((state) => state.openRecordsModal);
@@ -288,7 +289,33 @@ export default function SimControlPanel() {
         setRouteValidated(false);
         return;
       }
-      
+
+      const currentPriorities = simulation.warehouse_selection_priorities || ['nearest_distance', 'lowest_utilization', 'product_concentrated', 'least_waiting_entry'] as WarehouseSelectionPriority[];
+      const priorityLabelMap: Record<WarehouseSelectionPriority, string> = {
+        nearest_distance: '距离最近',
+        farthest_distance: '距离最远',
+        lowest_utilization: '利用率最低',
+        highest_utilization: '利用率最高',
+        product_concentrated: '按产品集中',
+        product_dispersed: '按产品分散',
+        least_waiting_entry: '等待入库最少',
+      };
+      const conflictPairs: [WarehouseSelectionPriority, WarehouseSelectionPriority][] = [
+        ['nearest_distance', 'farthest_distance'],
+        ['lowest_utilization', 'highest_utilization'],
+        ['product_concentrated', 'product_dispersed'],
+      ];
+      for (const [a, b] of conflictPairs) {
+        if (currentPriorities.includes(a) && currentPriorities.includes(b)) {
+          errors.push(`多仓库选择优先级冲突：「${priorityLabelMap[a]}」和「${priorityLabelMap[b]}」不能同时出现在优先级选择中`);
+        }
+      }
+      if (errors.length > 0) {
+        openValidationErrorModal(errors);
+        setRouteValidated(false);
+        return;
+      }
+
       const routeCount = result.routes.length;
       const completeRouteCount = result.routes.filter(r => r.is_complete).length;
       alert(`模拟前检查通过！\n\n共发现 ${routeCount} 条工艺路线\n其中完整路线 ${completeRouteCount} 条`);
@@ -518,6 +545,41 @@ export default function SimControlPanel() {
               min="1"
               step="1"
             />
+          </div>
+        </div>
+      )}
+
+      {showSettings && (
+        <div className="sim-settings-row warehouse-priority-row">
+          <label className="warehouse-priority-label">多仓库选择优先级</label>
+          <div className="warehouse-priority-options">
+            {([0, 1, 2, 3] as const).map((idx) => {
+              const levelLabels = ['优先等级1', '优先等级2', '优先等级3', '优先等级4'];
+              const currentPriorities = simulation.warehouse_selection_priorities || ['nearest_distance', 'lowest_utilization', 'product_concentrated', 'least_waiting_entry'] as WarehouseSelectionPriority[];
+              const currentValue = currentPriorities[idx] || 'nearest_distance';
+              return (
+                <div key={idx} className="warehouse-priority-item">
+                  <label>{levelLabels[idx]}</label>
+                  <select
+                    value={currentValue}
+                    onChange={(e) => {
+                      const newPriorities = [...currentPriorities] as WarehouseSelectionPriority[];
+                      newPriorities[idx] = e.target.value as WarehouseSelectionPriority;
+                      setWarehouseSelectionPriorities(newPriorities);
+                    }}
+                    disabled={isRunning}
+                  >
+                    <option value="nearest_distance">距离最近</option>
+                    <option value="farthest_distance">距离最远</option>
+                    <option value="lowest_utilization">利用率最低</option>
+                    <option value="highest_utilization">利用率最高</option>
+                    <option value="product_concentrated">按产品集中</option>
+                    <option value="product_dispersed">按产品分散</option>
+                    <option value="least_waiting_entry">等待入库最少</option>
+                  </select>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

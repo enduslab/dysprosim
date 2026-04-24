@@ -17,6 +17,7 @@ import type {
   SimulationRecord,
   ProductRouteCheckResult,
   SimulationMode,
+  WarehouseSelectionPriority,
 } from './types';
 
 interface AppState {
@@ -111,6 +112,7 @@ interface AppState {
   setResourceSelectionRule: (rule: ResourceSelectionRule) => Promise<void>;
   setSimulationMode: (mode: SimulationMode) => Promise<void>;
   setUtilizationSampleInterval: (interval_s: number) => Promise<void>;
+  setWarehouseSelectionPriorities: (priorities: WarehouseSelectionPriority[]) => Promise<void>;
   loadSimulationState: () => Promise<void>;
   loadSimulationResults: () => Promise<void>;
   saveSimulationRecord: () => Promise<string>;
@@ -962,6 +964,16 @@ export const useAppStore = create<AppState>((set) => ({
   setUtilizationSampleInterval: async (interval_s: number) => {
     try {
       await invoke('set_utilization_sample_interval', { intervalS: interval_s });
+      const simState = await invoke<SimulationState>('get_simulation_state');
+      set({ simulation: simState });
+    } catch (error) {
+      set({ error: String(error) });
+    }
+  },
+
+  setWarehouseSelectionPriorities: async (priorities: WarehouseSelectionPriority[]) => {
+    try {
+      await invoke('set_warehouse_selection_priorities', { priorities });
       const simState = await invoke<SimulationState>('get_simulation_state');
       set({ simulation: simState });
     } catch (error) {

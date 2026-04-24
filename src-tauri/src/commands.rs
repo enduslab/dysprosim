@@ -253,6 +253,7 @@ pub fn start_simulation(state: State<'_, AppState>) -> Result<(), String> {
     let saved_rule = simulation.state().resource_selection_rule;
     let saved_interval = simulation.state().utilization_sample_interval_s;
     let saved_mode = simulation.state().simulation_mode;
+    let saved_priorities = simulation.state().warehouse_selection_priorities.clone();
     
     let engine = crate::simulation::SimulationEngine::new(canvas.clone());
     *simulation = engine;
@@ -261,6 +262,7 @@ pub fn start_simulation(state: State<'_, AppState>) -> Result<(), String> {
     simulation.set_resource_selection_rule(saved_rule);
     simulation.set_utilization_sample_interval(saved_interval);
     simulation.set_simulation_mode(saved_mode);
+    simulation.set_warehouse_selection_priorities(saved_priorities);
     simulation.start();
     
     Ok(())
@@ -288,12 +290,14 @@ pub fn reset_simulation(state: State<'_, AppState>) -> Result<(), String> {
     let saved_duration = simulation.state().duration_s;
     let saved_speed = simulation.state().speed;
     let saved_mode = simulation.state().simulation_mode;
+    let saved_priorities = simulation.state().warehouse_selection_priorities.clone();
     
     let engine = crate::simulation::SimulationEngine::new(canvas.clone());
     *simulation = engine;
     simulation.set_duration(saved_duration);
     simulation.set_speed(saved_speed);
     simulation.set_simulation_mode(saved_mode);
+    simulation.set_warehouse_selection_priorities(saved_priorities);
     
     Ok(())
 }
@@ -336,6 +340,13 @@ pub fn set_simulation_mode(state: State<'_, AppState>, mode: crate::models::Simu
 pub fn set_utilization_sample_interval(state: State<'_, AppState>, interval_s: f64) -> Result<(), String> {
     let mut simulation = state.simulation.lock().map_err(|e| e.to_string())?;
     simulation.set_utilization_sample_interval(interval_s);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_warehouse_selection_priorities(state: State<'_, AppState>, priorities: Vec<crate::models::WarehouseSelectionPriority>) -> Result<(), String> {
+    let mut simulation = state.simulation.lock().map_err(|e| e.to_string())?;
+    simulation.set_warehouse_selection_priorities(priorities);
     Ok(())
 }
 

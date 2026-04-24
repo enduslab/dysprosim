@@ -1235,6 +1235,29 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
             <td style="padding:6px 12px;border:1px solid #ddd;background:#f8f9fa;font-weight:500;">整体最大在制品数</td>
             <td style="padding:6px 12px;border:1px solid #ddd;">${results.max_total_wip} 件</td>
           </tr>
+          <tr>
+            <td style="padding:6px 12px;border:1px solid #ddd;background:#f8f9fa;font-weight:500;">模拟模式</td>
+            <td style="padding:6px 12px;border:1px solid #ddd;">${results.simulation_mode === 'fixed_output' ? '固定产量' : '固定时长'}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 12px;border:1px solid #ddd;background:#f8f9fa;font-weight:500;">资源选择规则</td>
+            <td style="padding:6px 12px;border:1px solid #ddd;">${results.resource_selection_rule === 'min_wip_dynamic' ? '动态平衡(在制品)' : results.resource_selection_rule === 'min_utilrate_dynamic' ? '动态平衡(利用率)' : '基础规则'}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 12px;border:1px solid #ddd;background:#f8f9fa;font-weight:500;">多仓库选择优先级</td>
+            <td style="padding:6px 12px;border:1px solid #ddd;">${(results.warehouse_selection_priorities || []).map((p: string, i: number) => {
+              const labels: Record<string, string> = {
+                nearest_distance: '距离最近',
+                farthest_distance: '距离最远',
+                lowest_utilization: '利用率最低',
+                highest_utilization: '利用率最高',
+                product_concentrated: '按产品集中',
+                product_dispersed: '按产品分散',
+                least_waiting_entry: '等待入库最少',
+              };
+              return `${i + 1}:${labels[p] || p}`;
+            }).join(' → ')}</td>
+          </tr>
         </table>
       </div>`;
 
@@ -1768,6 +1791,22 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
 
       overviewData.push([]);
       overviewData.push(['最大在制品数', results.max_total_wip || 0]);
+
+      const priorityLabels: Record<string, string> = {
+        nearest_distance: '距离最近',
+        farthest_distance: '距离最远',
+        lowest_utilization: '利用率最低',
+        highest_utilization: '利用率最高',
+        product_concentrated: '按产品集中',
+        product_dispersed: '按产品分散',
+        least_waiting_entry: '等待入库最少',
+      };
+      overviewData.push([]);
+      overviewData.push(['模拟选项']);
+      overviewData.push(['选项', '设置值']);
+      overviewData.push(['模拟模式', results.simulation_mode === 'fixed_output' ? '固定产量' : '固定时长']);
+      overviewData.push(['资源选择规则', results.resource_selection_rule === 'min_wip_dynamic' ? '动态平衡(在制品)' : results.resource_selection_rule === 'min_utilrate_dynamic' ? '动态平衡(利用率)' : '基础规则']);
+      overviewData.push(['多仓库选择优先级', (results.warehouse_selection_priorities || []).map((p: string, i: number) => `${i + 1}:${priorityLabels[p] || p}`).join(' → ')]);
 
       const ws1 = XLSX.utils.aoa_to_sheet(overviewData);
       ws1['!cols'] = [{ wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
@@ -2574,6 +2613,41 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
                         <div className="stat-item">
                           <span className="stat-label">整体最大在制品数</span>
                           <span className="stat-value">{selectedRecord.results.max_total_wip} 件</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="stats-section">
+                      <h5>模拟选项</h5>
+                      <div className="stats-grid">
+                        <div className="stat-item">
+                          <span className="stat-label">模拟模式</span>
+                          <span className="stat-value">
+                            {selectedRecord.results.simulation_mode === 'fixed_output' ? '固定产量' : '固定时长'}
+                          </span>
+                        </div>
+                        <div className="stat-item">
+                          <span className="stat-label">资源选择规则</span>
+                          <span className="stat-value">
+                            {selectedRecord.results.resource_selection_rule === 'min_wip_dynamic' ? '动态平衡(在制品)' : selectedRecord.results.resource_selection_rule === 'min_utilrate_dynamic' ? '动态平衡(利用率)' : '基础规则'}
+                          </span>
+                        </div>
+                        <div className="stat-item">
+                          <span className="stat-label">多仓库选择优先级</span>
+                          <span className="stat-value">
+                            {(selectedRecord.results.warehouse_selection_priorities || []).map((p, i) => {
+                              const labels: Record<string, string> = {
+                                nearest_distance: '距离最近',
+                                farthest_distance: '距离最远',
+                                lowest_utilization: '利用率最低',
+                                highest_utilization: '利用率最高',
+                                product_concentrated: '按产品集中',
+                                product_dispersed: '按产品分散',
+                                least_waiting_entry: '等待入库最少',
+                              };
+                              return `${i + 1}:${labels[p] || p}`;
+                            }).join(' → ')}
+                          </span>
                         </div>
                       </div>
                     </div>

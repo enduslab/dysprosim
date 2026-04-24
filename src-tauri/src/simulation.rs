@@ -142,9 +142,20 @@ pub struct SimulationState {
     pub stopped_feeding_products: std::collections::HashSet<String>,
     #[serde(default)]
     pub end_node_arrival_records: HashMap<String, Vec<crate::models::EndNodeArrivalRecord>>,
+    #[serde(default = "default_warehouse_selection_priorities")]
+    pub warehouse_selection_priorities: Vec<crate::models::WarehouseSelectionPriority>,
 }
 
 fn default_utilization_sample_interval() -> f64 { 1.0 }
+
+fn default_warehouse_selection_priorities() -> Vec<crate::models::WarehouseSelectionPriority> {
+    vec![
+        crate::models::WarehouseSelectionPriority::NearestDistance,
+        crate::models::WarehouseSelectionPriority::LowestUtilization,
+        crate::models::WarehouseSelectionPriority::ProductConcentrated,
+        crate::models::WarehouseSelectionPriority::LeastWaitingEntry,
+    ]
+}
 
 impl Default for SimulationState {
     fn default() -> Self {
@@ -177,6 +188,7 @@ impl Default for SimulationState {
             end_node_completed_by_product: HashMap::new(),
             stopped_feeding_products: std::collections::HashSet::new(),
             end_node_arrival_records: HashMap::new(),
+            warehouse_selection_priorities: default_warehouse_selection_priorities(),
         }
     }
 }
@@ -315,6 +327,12 @@ pub struct SimulationResults {
     pub storage_stock_history: HashMap<String, Vec<StockHistoryRecord>>,
     #[serde(default)]
     pub end_node_arrival_records: HashMap<String, Vec<crate::models::EndNodeArrivalRecord>>,
+    #[serde(default)]
+    pub simulation_mode: Option<crate::models::SimulationMode>,
+    #[serde(default)]
+    pub resource_selection_rule: Option<crate::models::ResourceSelectionRule>,
+    #[serde(default)]
+    pub warehouse_selection_priorities: Vec<crate::models::WarehouseSelectionPriority>,
 }
 
 pub struct SimulationEngine {
@@ -409,6 +427,12 @@ impl SimulationEngine {
 
     pub fn set_utilization_sample_interval(&mut self, interval_s: f64) {
         self.state.utilization_sample_interval_s = interval_s.max(1.0);
+    }
+
+    pub fn set_warehouse_selection_priorities(&mut self, priorities: Vec<crate::models::WarehouseSelectionPriority>) {
+        if priorities.len() == 4 {
+            self.state.warehouse_selection_priorities = priorities;
+        }
     }
 
     fn update_total_wip(&mut self) {
@@ -1915,6 +1939,11 @@ impl SimulationEngine {
             candidates.retain(|(_, _, _, is_storage)| !*is_storage);
         }
 
+        let all_storage = candidates.iter().all(|(_, _, _, is_storage)| *is_storage);
+        if all_storage && candidates.len() > 1 {
+            return self.select_warehouse_by_priority(&candidates, from_device_id, product_code);
+        }
+
         match self.state.resource_selection_rule {
             crate::models::ResourceSelectionRule::Basic => {
                 let idle_candidates: Vec<_> = candidates.iter().filter(|(_, is_idle, _, _)| *is_idle).collect();
@@ -2107,6 +2136,193 @@ impl SimulationEngine {
                 }
             }
         }
+    }
+
+    fn select_warehouse_by_priority(
+        &self,
+        candidates: &[(&crate::models::Connection, bool, f64, bool)],
+        from_device_id: &str,
+        product_code: &str,
+    ) -> Option<crate::models::Connection> {
+        let from_device = self.canvas_state.devices.get(from_device_id);
+        let (from_x, from_y) = from_device.map_or((0.0, 0.0), |d| d.center());
+
+        let warehouse_ids: Vec<String> = candidates.iter()
+            .map(|(conn, _, _, _)| conn.to_device_id.clone())
+            .collect();
+
+        let mut remaining: Vec<String> = warehouse_ids.iter()
+            .filter(|wh_id| {
+                let remaining_capacity = self.get_warehouse_remaining_capacity(wh_id);
+                remaining_capacity > 0
+            })
+            .cloned()
+            .collect();
+
+        if remaining.is_empty() {
+            remaining = warehouse_ids.clone();
+        }
+
+        if remaining.len() == 1 {
+            let wh_id = &remaining[0];
+            return candidates.iter()
+                .find(|(conn, _, _, _)| conn.to_device_id == *wh_id)
+                .map(|(conn, _, _, _)| (*conn).clone());
+        }
+
+        for priority in &self.state.warehouse_selection_priorities {
+            if remaining.len() <= 1 {
+                break;
+            }
+
+            let scored = self.score_warehouses_by_priority(&remaining, from_x, from_y, product_code, priority);
+
+            if let Some(best_score) = scored.values().copied().filter(|v| v.is_finite()).min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)) {
+                let best: Vec<String> = scored.iter()
+                    .filter(|(_, &v)| v.is_finite() && (v - best_score).abs() < 0.0001)
+                    .map(|(id, _)| id.clone())
+                    .collect();
+
+                if best.len() == 1 {
+                    let wh_id = &best[0];
+                    return candidates.iter()
+                        .find(|(conn, _, _, _)| conn.to_device_id == *wh_id)
+                        .map(|(conn, _, _, _)| (*conn).clone());
+                }
+
+                remaining = best;
+            }
+        }
+
+        remaining.sort();
+        let wh_id = &remaining[0];
+        candidates.iter()
+            .find(|(conn, _, _, _)| conn.to_device_id == *wh_id)
+            .map(|(conn, _, _, _)| (*conn).clone())
+    }
+
+    fn get_warehouse_remaining_capacity(&self, device_id: &str) -> i32 {
+        let device = self.canvas_state.devices.get(device_id);
+        let capacity = match device {
+            Some(crate::models::Device::Warehouse(w)) => w.wh_capacity,
+            Some(crate::models::Device::Buffer(b)) => b.max_capacity.unwrap_or(0),
+            _ => 0,
+        };
+
+        if capacity <= 0 {
+            return i32::MAX;
+        }
+
+        let stock = self.state.storage.get(device_id)
+            .map(|s| s.stock)
+            .unwrap_or(0);
+        let waiting = self.state.storage.get(device_id)
+            .map(|s| s.waiting_entry_queue.len() as i32)
+            .unwrap_or(0);
+
+        (capacity - stock - waiting).max(0)
+    }
+
+    fn score_warehouses_by_priority(
+        &self,
+        warehouse_ids: &[String],
+        from_x: f64,
+        from_y: f64,
+        product_code: &str,
+        priority: &crate::models::WarehouseSelectionPriority,
+    ) -> HashMap<String, f64> {
+        let mut scores = HashMap::new();
+
+        for wh_id in warehouse_ids {
+            let device = match self.canvas_state.devices.get(wh_id) {
+                Some(d) => d,
+                None => {
+                    scores.insert(wh_id.clone(), f64::NAN);
+                    continue;
+                }
+            };
+
+            let score = match priority {
+                crate::models::WarehouseSelectionPriority::NearestDistance => {
+                    let (to_x, to_y) = device.center();
+                    let distance = ((to_x - from_x).powi(2) + (to_y - from_y).powi(2)).sqrt();
+                    distance
+                }
+                crate::models::WarehouseSelectionPriority::FarthestDistance => {
+                    let (to_x, to_y) = device.center();
+                    let distance = ((to_x - from_x).powi(2) + (to_y - from_y).powi(2)).sqrt();
+                    -distance
+                }
+                crate::models::WarehouseSelectionPriority::LowestUtilization => {
+                    let capacity = match device {
+                        crate::models::Device::Warehouse(w) => w.wh_capacity,
+                        crate::models::Device::Buffer(b) => b.max_capacity.unwrap_or(0),
+                        _ => 0,
+                    };
+                    if capacity <= 0 {
+                        0.0
+                    } else {
+                        let stock = self.state.storage.get(wh_id)
+                            .map(|s| s.stock)
+                            .unwrap_or(0);
+                        stock as f64 / capacity as f64
+                    }
+                }
+                crate::models::WarehouseSelectionPriority::HighestUtilization => {
+                    let capacity = match device {
+                        crate::models::Device::Warehouse(w) => w.wh_capacity,
+                        crate::models::Device::Buffer(b) => b.max_capacity.unwrap_or(0),
+                        _ => 0,
+                    };
+                    if capacity <= 0 {
+                        0.0
+                    } else {
+                        let stock = self.state.storage.get(wh_id)
+                            .map(|s| s.stock)
+                            .unwrap_or(0);
+                        -(stock as f64 / capacity as f64)
+                    }
+                }
+                crate::models::WarehouseSelectionPriority::ProductConcentrated => {
+                    let same_product_count = self.state.storage.get(wh_id)
+                        .map(|s| {
+                            s.stored_process_product_ids.iter()
+                                .filter(|pp_id| {
+                                    self.state.process_products.get(*pp_id)
+                                        .map(|pp| pp.product_code == product_code)
+                                        .unwrap_or(false)
+                                })
+                                .count() as f64
+                        })
+                        .unwrap_or(0.0);
+                    -same_product_count
+                }
+                crate::models::WarehouseSelectionPriority::ProductDispersed => {
+                    let same_product_count = self.state.storage.get(wh_id)
+                        .map(|s| {
+                            s.stored_process_product_ids.iter()
+                                .filter(|pp_id| {
+                                    self.state.process_products.get(*pp_id)
+                                        .map(|pp| pp.product_code == product_code)
+                                        .unwrap_or(false)
+                                })
+                                .count() as f64
+                        })
+                        .unwrap_or(0.0);
+                    same_product_count
+                }
+                crate::models::WarehouseSelectionPriority::LeastWaitingEntry => {
+                    let waiting_count = self.state.storage.get(wh_id)
+                        .map(|s| s.waiting_entry_queue.len() as f64)
+                        .unwrap_or(0.0);
+                    waiting_count
+                }
+            };
+
+            scores.insert(wh_id.clone(), score);
+        }
+
+        scores
     }
 
     fn can_start_transport(&self, connection_id: &str) -> bool {
@@ -4185,6 +4401,15 @@ impl SimulationEngine {
                 0.0
             };
 
+            let from_is_start = self.canvas_state.devices.get(&from_device)
+                .map_or(false, |d| d.is_start());
+            let to_is_end = self.canvas_state.devices.get(&to_device)
+                .map_or(false, |d| d.is_end());
+
+            if from_is_start || to_is_end {
+                continue;
+            }
+
             connection_stats.push(ConnectionStatistics {
                 connection_id: id.clone(),
                 connection_name: name,
@@ -4236,6 +4461,17 @@ impl SimulationEngine {
                 .map(|(id, dev)| (id.clone(), dev.utilization_history.clone()))
                 .collect(),
             connection_utilization_history: self.state.connections.iter()
+                .filter(|(id, _)| {
+                    if let Some(conn) = self.canvas_state.connections.get(*id) {
+                        let from_is_start = self.canvas_state.devices.get(&conn.from_device_id)
+                            .map_or(false, |d| d.is_start());
+                        let to_is_end = self.canvas_state.devices.get(&conn.to_device_id)
+                            .map_or(false, |d| d.is_end());
+                        !from_is_start && !to_is_end
+                    } else {
+                        true
+                    }
+                })
                 .map(|(id, conn)| (id.clone(), conn.utilization_history.clone()))
                 .collect(),
             storage_utilization_history: self.state.storage.iter()
@@ -4246,6 +4482,9 @@ impl SimulationEngine {
                 .collect(),
             end_node_arrival_records: self.state.end_node_arrival_records.clone(),
             product_avg_process_times: self.calculate_product_avg_process_times(),
+            simulation_mode: Some(self.state.simulation_mode),
+            resource_selection_rule: Some(self.state.resource_selection_rule),
+            warehouse_selection_priorities: self.state.warehouse_selection_priorities.clone(),
         }
     }
     

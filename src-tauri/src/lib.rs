@@ -40,6 +40,7 @@ pub fn run() {
             commands::set_resource_selection_rule,
             commands::set_simulation_mode,
             commands::set_utilization_sample_interval,
+            commands::set_warehouse_selection_priorities,
             commands::get_simulation_state,
             commands::get_simulation_results,
             commands::save_simulation_record,

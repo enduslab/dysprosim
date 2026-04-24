@@ -98,6 +98,32 @@ pub enum LineStyle {
     Elbow,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WarehouseSelectionPriority {
+    NearestDistance,
+    FarthestDistance,
+    LowestUtilization,
+    HighestUtilization,
+    ProductConcentrated,
+    ProductDispersed,
+    LeastWaitingEntry,
+}
+
+impl WarehouseSelectionPriority {
+    pub fn is_conflict_with(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (Self::NearestDistance, Self::FarthestDistance)
+            | (Self::FarthestDistance, Self::NearestDistance)
+            | (Self::LowestUtilization, Self::HighestUtilization)
+            | (Self::HighestUtilization, Self::LowestUtilization)
+            | (Self::ProductConcentrated, Self::ProductDispersed)
+            | (Self::ProductDispersed, Self::ProductConcentrated)
+        )
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceBase {
     pub id: String,

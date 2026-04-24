@@ -14,6 +14,8 @@ export type ReleaseMode = 'immediate' | 'wait_for_idle';
 
 export type ResourceSelectionRule = 'basic' | 'min_wip_dynamic' | 'min_utilrate_dynamic';
 
+export type WarehouseSelectionPriority = 'nearest_distance' | 'farthest_distance' | 'lowest_utilization' | 'highest_utilization' | 'product_concentrated' | 'product_dispersed' | 'least_waiting_entry';
+
 export type LineStyle = 'straight' | 'curve' | 'free_polyline' | 'elbow';
 
 export type SimulationMode = 'fixed_duration' | 'fixed_output';
@@ -260,6 +262,7 @@ export interface SimulationState {
   material_consumption: Record<string, number>;
   device_material_consumption: Record<string, Record<string, number>>;
   utilization_sample_interval_s?: number;
+  warehouse_selection_priorities?: WarehouseSelectionPriority[];
 }
 
 export interface DeviceStatistics {
@@ -387,6 +390,9 @@ export interface SimulationResults {
   storage_utilization_history?: Record<string, UtilizationRecord[]>;
   storage_stock_history?: Record<string, StockHistoryRecord[]>;
   end_node_arrival_records?: Record<string, EndNodeArrivalRecord[]>;
+  simulation_mode?: SimulationMode;
+  resource_selection_rule?: ResourceSelectionRule;
+  warehouse_selection_priorities?: WarehouseSelectionPriority[];
 }
 
 export interface SimulationRecord {
