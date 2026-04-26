@@ -11,6 +11,7 @@ pub enum ShapeType {
     Diamond,
     Tri,
     Trap,
+    InvertedTrap,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
@@ -203,6 +204,12 @@ impl DeviceBase {
                 let h = self.params.get("height").copied().unwrap_or(600.0);
                 (top.max(bottom), h)
             }
+            ShapeType::InvertedTrap => {
+                let top = self.params.get("top").copied().unwrap_or(600.0);
+                let bottom = self.params.get("bottom").copied().unwrap_or(900.0);
+                let h = self.params.get("height").copied().unwrap_or(600.0);
+                (top.max(bottom), h)
+            }
         }
     }
 
@@ -354,7 +361,12 @@ impl Station {
 pub struct AssemblyStation {
     #[serde(flatten)]
     pub base: DeviceBase,
+    #[serde(default)]
     pub processable_products: Vec<String>,
+    #[serde(default)]
+    pub components: Vec<String>,
+    #[serde(default)]
+    pub assembly_products: Vec<String>,
     pub dist_type: DistributionType,
     pub avg_time_s: Option<f64>,
     pub stddev_s: Option<f64>,
@@ -383,6 +395,8 @@ impl AssemblyStation {
         Self {
             base: DeviceBase::new(ShapeType::Trap, x_mm, y_mm, params),
             processable_products: Vec::new(),
+            components: Vec::new(),
+            assembly_products: Vec::new(),
             dist_type: DistributionType::Normal,
             avg_time_s: Some(1.0),
             stddev_s: None,
@@ -395,6 +409,59 @@ impl AssemblyStation {
             product_process_times: HashMap::new(),
             product_tools: HashMap::new(),
             product_upstream_requirements: HashMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DisassemblyStation {
+    #[serde(flatten)]
+    pub base: DeviceBase,
+    #[serde(default)]
+    pub items_to_disassemble: Vec<String>,
+    #[serde(default)]
+    pub disassembly_products: Vec<String>,
+    pub dist_type: DistributionType,
+    pub avg_time_s: Option<f64>,
+    pub stddev_s: Option<f64>,
+    pub min_time_s: Option<f64>,
+    pub max_time_s: Option<f64>,
+    pub mode_time_s: Option<f64>,
+    pub uniform_min_s: Option<f64>,
+    pub uniform_max_s: Option<f64>,
+    pub exp_mean_s: Option<f64>,
+    #[serde(default)]
+    pub product_process_times: HashMap<String, ProductProcessTime>,
+    #[serde(default)]
+    pub product_tools: HashMap<String, HashMap<String, f64>>,
+    #[serde(default)]
+    pub product_disassembly_requirements: HashMap<String, HashMap<String, i32>>,
+}
+
+impl DisassemblyStation {
+    pub fn new(x_mm: f64, y_mm: f64) -> Self {
+        let mut params = HashMap::new();
+        params.insert("top_width".to_string(), 500.0);
+        params.insert("bottom_width".to_string(), 300.0);
+        params.insert("height".to_string(), 200.0);
+        params.insert("rotation_deg".to_string(), 0.0);
+
+        Self {
+            base: DeviceBase::new(ShapeType::InvertedTrap, x_mm, y_mm, params),
+            items_to_disassemble: Vec::new(),
+            disassembly_products: Vec::new(),
+            dist_type: DistributionType::Normal,
+            avg_time_s: Some(1.0),
+            stddev_s: None,
+            min_time_s: None,
+            max_time_s: None,
+            mode_time_s: None,
+            uniform_min_s: None,
+            uniform_max_s: None,
+            exp_mean_s: None,
+            product_process_times: HashMap::new(),
+            product_tools: HashMap::new(),
+            product_disassembly_requirements: HashMap::new(),
         }
     }
 }
@@ -603,6 +670,7 @@ pub enum Device {
     EndNode(EndNode),
     Station(Station),
     AssemblyStation(AssemblyStation),
+    DisassemblyStation(DisassemblyStation),
     Warehouse(Warehouse),
     TempStore(TempStore),
     Buffer(Buffer),
@@ -616,6 +684,7 @@ impl Device {
             Device::EndNode(d) => &d.base.id,
             Device::Station(d) => &d.base.id,
             Device::AssemblyStation(d) => &d.base.id,
+            Device::DisassemblyStation(d) => &d.base.id,
             Device::Warehouse(d) => &d.base.id,
             Device::TempStore(d) => &d.base.id,
             Device::Buffer(d) => &d.base.id,
@@ -629,6 +698,7 @@ impl Device {
             Device::EndNode(d) => &d.base.name,
             Device::Station(d) => &d.base.name,
             Device::AssemblyStation(d) => &d.base.name,
+            Device::DisassemblyStation(d) => &d.base.name,
             Device::Warehouse(d) => &d.base.name,
             Device::TempStore(d) => &d.base.name,
             Device::Buffer(d) => &d.base.name,
@@ -642,6 +712,7 @@ impl Device {
             Device::EndNode(d) => (d.base.x_mm, d.base.y_mm),
             Device::Station(d) => (d.base.x_mm, d.base.y_mm),
             Device::AssemblyStation(d) => (d.base.x_mm, d.base.y_mm),
+            Device::DisassemblyStation(d) => (d.base.x_mm, d.base.y_mm),
             Device::Warehouse(d) => (d.base.x_mm, d.base.y_mm),
             Device::TempStore(d) => (d.base.x_mm, d.base.y_mm),
             Device::Buffer(d) => (d.base.x_mm, d.base.y_mm),
@@ -655,6 +726,7 @@ impl Device {
             Device::EndNode(d) => d.base.bbox_mm(),
             Device::Station(d) => d.base.bbox_mm(),
             Device::AssemblyStation(d) => d.base.bbox_mm(),
+            Device::DisassemblyStation(d) => d.base.bbox_mm(),
             Device::Warehouse(d) => d.base.bbox_mm(),
             Device::TempStore(d) => d.base.bbox_mm(),
             Device::Buffer(d) => d.base.bbox_mm(),
@@ -682,6 +754,10 @@ impl Device {
 
     pub fn is_assembly_station(&self) -> bool {
         matches!(self, Device::AssemblyStation(_))
+    }
+
+    pub fn is_disassembly_station(&self) -> bool {
+        matches!(self, Device::DisassemblyStation(_))
     }
 
     pub fn is_warehouse(&self) -> bool {
@@ -934,6 +1010,21 @@ pub struct BranchPath {
     pub required_quantity: i32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum RouteType {
+    Normal,
+    ComponentToAssembly,
+    AssemblyToEnd,
+    InputToDisassembly,
+    DisassemblyOutput,
+}
+
+impl Default for RouteType {
+    fn default() -> Self {
+        RouteType::Normal
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProductRoute {
     pub product_code: String,
@@ -952,6 +1043,8 @@ pub struct ProductRoute {
     pub assembly_node_name: Option<String>,
     #[serde(default)]
     pub branch_paths: Vec<BranchPath>,
+    #[serde(default)]
+    pub route_type: RouteType,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -962,6 +1055,8 @@ pub struct ProductRouteCheckResult {
     pub incomplete_route_start_nodes: Vec<StartNodeInfo>,
     #[serde(default)]
     pub assembly_station_errors: Vec<AssemblyStationError>,
+    #[serde(default)]
+    pub disassembly_station_errors: Vec<DisassemblyStationError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -971,14 +1066,25 @@ pub struct AssemblyStationError {
     pub error_type: AssemblyStationErrorType,
     pub product_code: Option<String>,
     pub product_name: Option<String>,
+    #[serde(default)]
+    pub component_code: Option<String>,
+    #[serde(default)]
+    pub component_name: Option<String>,
+    #[serde(default)]
     pub upstream_node_id: Option<String>,
+    #[serde(default)]
     pub upstream_node_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum AssemblyStationErrorType {
     NoProductSelected,
+    NoComponentSelected,
+    NoAssemblyProductSelected,
     UpstreamQuantityZero,
+    ComponentQuantityZero,
+    NoComponentForProduct,
+    ComponentUnreachable,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -987,4 +1093,27 @@ pub struct StartNodeInfo {
     pub name: String,
     pub product_code: Option<String>,
     pub product_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum DisassemblyStationErrorType {
+    NoItemToDisassemble,
+    NoDisassemblyProduct,
+    NoProductForItem,
+    DisassemblyProductQuantityZero,
+    ItemUnreachable,
+    AssemblyProductAsItem,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DisassemblyStationError {
+    pub id: String,
+    pub name: String,
+    pub error_type: DisassemblyStationErrorType,
+    pub product_code: Option<String>,
+    pub product_name: Option<String>,
+    #[serde(default)]
+    pub disassembly_product_code: Option<String>,
+    #[serde(default)]
+    pub disassembly_product_name: Option<String>,
 }

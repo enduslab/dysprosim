@@ -242,12 +242,42 @@ export default function SimControlPanel() {
       
       if (result.assembly_station_errors && result.assembly_station_errors.length > 0) {
         for (const error of result.assembly_station_errors) {
-          if (error.error_type === 'NoProductSelected') {
+          if (error.error_type === 'NoComponentSelected') {
+            errors.push(`装配站「${error.name}」未选择任何组件`);
+          } else if (error.error_type === 'NoAssemblyProductSelected') {
+            errors.push(`装配站「${error.name}」未选择任何装配成品`);
+          } else if (error.error_type === 'NoComponentForProduct') {
+            errors.push(`装配站「${error.name}」的装配成品「${error.product_name || error.product_code}」未设置组件需求`);
+          } else if (error.error_type === 'ComponentQuantityZero') {
+            errors.push(`装配站「${error.name}」的装配成品「${error.product_name || error.product_code}」的组件「${error.component_name || error.component_code}」需求数量为 0`);
+          } else if (error.error_type === 'ComponentUnreachable') {
+            errors.push(`装配站「${error.name}」的装配成品「${error.product_name || error.product_code}」的组件「${error.component_name || error.component_code}」无法从上游获取`);
+          } else if (error.error_type === 'NoProductSelected') {
             errors.push(`装配站「${error.name}」未选择任何产品`);
-          } else if (!error.upstream_node_id) {
-            errors.push(`装配站「${error.name}」的产品「${error.product_name || error.product_code}」未设置上游来料需求`);
-          } else {
-            errors.push(`装配站「${error.name}」的产品「${error.product_name || error.product_code}」上游节点「${error.upstream_node_name || error.upstream_node_id}」的来料用量为 0`);
+          } else if (error.error_type === 'UpstreamQuantityZero') {
+            if (error.upstream_node_id) {
+              errors.push(`装配站「${error.name}」的产品「${error.product_name || error.product_code}」上游节点「${error.upstream_node_name || error.upstream_node_id}」的来料用量为 0`);
+            } else {
+              errors.push(`装配站「${error.name}」的产品「${error.product_name || error.product_code}」未设置上游来料需求`);
+            }
+          }
+        }
+      }
+
+      if (result.disassembly_station_errors && result.disassembly_station_errors.length > 0) {
+        for (const error of result.disassembly_station_errors) {
+          if (error.error_type === 'NoItemToDisassemble') {
+            errors.push(`拆解站「${error.name}」未选择任何待拆解品`);
+          } else if (error.error_type === 'NoDisassemblyProduct') {
+            errors.push(`拆解站「${error.name}」未选择任何拆解产物`);
+          } else if (error.error_type === 'NoProductForItem') {
+            errors.push(`拆解站「${error.name}」的待拆解品「${error.product_name || error.product_code}」未设置拆解产物数量`);
+          } else if (error.error_type === 'DisassemblyProductQuantityZero') {
+            errors.push(`拆解站「${error.name}」的待拆解品「${error.product_name || error.product_code}」的拆解产物「${error.disassembly_product_name || error.disassembly_product_code}」产出数量为 0`);
+          } else if (error.error_type === 'ItemUnreachable') {
+            errors.push(`拆解站「${error.name}」的待拆解品「${error.product_name || error.product_code}」无法从起点或上游拆解站获取`);
+          } else if (error.error_type === 'AssemblyProductAsItem') {
+            errors.push(`拆解站「${error.name}」的待拆解品「${error.product_name || error.product_code}」是装配成品，不能作为待拆解品`);
           }
         }
       }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store';
-import type { Device, StartNode, EndNode, Station, AssemblyStation, Warehouse, Buffer, TempStore, ProductProcessTime } from '../types';
+import type { Device, StartNode, EndNode, Station, AssemblyStation, DisassemblyStation, Warehouse, Buffer, TempStore, ProductProcessTime } from '../types';
 
 function ImeInput({ value, onChange, className, placeholder, style }: {
   value: string;
@@ -151,6 +151,9 @@ export default function PropertiesPanel() {
     } else if (device?.type === 'AssemblyStation') {
       tabs.push({ key: 'product', label: '产品设置' });
       tabs.push({ key: 'processing', label: '装配设置' });
+    } else if (device?.type === 'DisassemblyStation') {
+      tabs.push({ key: 'product', label: '产品设置' });
+      tabs.push({ key: 'processing', label: '拆解设置' });
     } else if (device?.type === 'Warehouse') {
       tabs.push({ key: 'product', label: '产品设置' });
       tabs.push({ key: 'warehouse', label: '仓库设置' });
@@ -962,6 +965,13 @@ if (device) {
             />
           )}
 
+          {deviceTab === 'processing' && device.type === 'DisassemblyStation' && (
+            <DisassemblySettingsTab
+              device={device as DisassemblyStation}
+              onChange={handleDeviceChange}
+            />
+          )}
+
           {deviceTab === 'warehouse' && device.type === 'Warehouse' && (
             <WarehouseSettingsTab
               device={device as Warehouse}
@@ -1147,8 +1157,70 @@ function ProductSettingsTab({
   onProductSelect: (productCode: string) => void;
   products: Product[];
 }) {
-  if (device.type === 'Station' || device.type === 'AssemblyStation') {
-    const station = device as Station | AssemblyStation;
+  if (device.type === 'AssemblyStation') {
+    const assembly = device as AssemblyStation;
+    const handleComponentsChange = (codes: string[]) => {
+      onChange('components', codes);
+    };
+    const handleAssemblyProductsChange = (codes: string[]) => {
+      onChange('assembly_products', codes);
+    };
+    
+    return (
+      <div className="property-group">
+        <div className="property-row">
+          <span className="property-label">组件</span>
+          <MultiProductSelector 
+            selectedCodes={assembly.components || []} 
+            products={products} 
+            onChange={handleComponentsChange}
+          />
+        </div>
+        <div className="property-row">
+          <span className="property-label">装配成品</span>
+          <MultiProductSelector 
+            selectedCodes={assembly.assembly_products || []} 
+            products={products} 
+            onChange={handleAssemblyProductsChange}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (device.type === 'DisassemblyStation') {
+    const disassembly = device as DisassemblyStation;
+    const handleItemsToDisassembleChange = (codes: string[]) => {
+      onChange('items_to_disassemble', codes);
+    };
+    const handleDisassemblyProductsChange = (codes: string[]) => {
+      onChange('disassembly_products', codes);
+    };
+    
+    return (
+      <div className="property-group">
+        <div className="property-row">
+          <span className="property-label">待拆解品</span>
+          <MultiProductSelector 
+            selectedCodes={disassembly.items_to_disassemble || []} 
+            products={products} 
+            onChange={handleItemsToDisassembleChange}
+          />
+        </div>
+        <div className="property-row">
+          <span className="property-label">拆解产物</span>
+          <MultiProductSelector 
+            selectedCodes={disassembly.disassembly_products || []} 
+            products={products} 
+            onChange={handleDisassemblyProductsChange}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (device.type === 'Station') {
+    const station = device as Station;
     const handleProcessableProductsChange = (codes: string[]) => {
       onChange('processable_products', codes);
     };
@@ -1922,9 +1994,30 @@ function TargetOutputSettingsTab({ device, onChange }: { device: EndNode; onChan
       }
     } else if (dev.type === 'AssemblyStation') {
       const as_ = dev as AssemblyStation;
-      if (as_.processable_products && as_.processable_products.length > 0) {
+      if (as_.assembly_products && as_.assembly_products.length > 0) {
         hasUpstreamProductConfig = true;
-        for (const code of as_.processable_products) {
+        for (const code of as_.assembly_products) {
+          const product = canvas.products[code];
+          reachableProducts.set(code, product?.name || code);
+        }
+      }
+      if (as_.components && as_.components.length > 0) {
+        for (const code of as_.components) {
+          const product = canvas.products[code];
+          reachableProducts.set(code, product?.name || code);
+        }
+      }
+    } else if (dev.type === 'DisassemblyStation') {
+      const ds = dev as DisassemblyStation;
+      if (ds.items_to_disassemble && ds.items_to_disassemble.length > 0) {
+        hasUpstreamProductConfig = true;
+        for (const code of ds.items_to_disassemble) {
+          const product = canvas.products[code];
+          reachableProducts.set(code, product?.name || code);
+        }
+      }
+      if (ds.disassembly_products && ds.disassembly_products.length > 0) {
+        for (const code of ds.disassembly_products) {
           const product = canvas.products[code];
           reachableProducts.set(code, product?.name || code);
         }
@@ -2104,52 +2197,29 @@ function AssemblySettingsTab({ device, onChange }: { device: AssemblyStation; on
     onChange('product_upstream_requirements', newRequirements);
   };
 
-  const updateUpstreamRequirement = (productCode: string, upstreamNodeId: string, quantity: number) => {
+  const updateUpstreamRequirement = (productCode: string, componentCode: string, quantity: number) => {
     const currentReqs = device.product_upstream_requirements?.[productCode] || {};
-    const newReqs = { ...currentReqs, [upstreamNodeId]: quantity };
+    const newReqs = { ...currentReqs, [componentCode]: quantity };
     updateUpstreamRequirements(productCode, newReqs);
   };
 
-  const removeUpstreamRequirement = (productCode: string, upstreamNodeId: string) => {
+  const removeUpstreamRequirement = (productCode: string, componentCode: string) => {
     const currentReqs = device.product_upstream_requirements?.[productCode] || {};
     const newReqs = { ...currentReqs };
-    delete newReqs[upstreamNodeId];
+    delete newReqs[componentCode];
     updateUpstreamRequirements(productCode, newReqs);
   };
 
-  const getUpstreamNodes = (productCode: string) => {
-    const incoming = Object.values(canvas.connections).filter(c => c.to_device_id === device.id);
-    const upstreamNodes: { id: string; name: string; type: string }[] = [];
-    
-    for (const conn of incoming) {
-      const upstreamDevice = canvas.devices[conn.from_device_id];
-      if (upstreamDevice) {
-        let canProvide = false;
-        if (upstreamDevice.type === 'Station') {
-          const station = upstreamDevice as Station;
-          canProvide = !station.processable_products?.length || station.processable_products.includes(productCode);
-        } else if (upstreamDevice.type === 'Warehouse') {
-          const warehouse = upstreamDevice as Warehouse;
-          canProvide = !warehouse.processable_products?.length || warehouse.processable_products.includes(productCode);
-        } else if (upstreamDevice.type === 'Buffer') {
-          const buffer = upstreamDevice as Buffer;
-          canProvide = !buffer.product_code || buffer.product_code === productCode;
-        } else if (upstreamDevice.type === 'TempStore') {
-          const tempStore = upstreamDevice as TempStore;
-          canProvide = !tempStore.processable_products?.length || tempStore.processable_products.includes(productCode);
-        }
-        
-        if (canProvide) {
-          upstreamNodes.push({
-            id: upstreamDevice.id,
-            name: upstreamDevice.name,
-            type: upstreamDevice.type,
-          });
-        }
-      }
-    }
-    
-    return upstreamNodes;
+  const getComponentProducts = () => {
+    const componentCodes = device.components || [];
+    return componentCodes.map(code => {
+      const product = canvas.products[code];
+      return {
+        code,
+        name: product?.name || code,
+        color: product?.color || '#888',
+      };
+    });
   };
 
   const renderTimeInputs = (config: ProductProcessTime, productCode: string) => {
@@ -2431,24 +2501,24 @@ function AssemblySettingsTab({ device, onChange }: { device: AssemblyStation; on
         </div>
       )}
 
-      {device.processable_products && device.processable_products.length > 0 && (
+      {device.assembly_products && device.assembly_products.length > 0 && (
         <>
           <div style={{ marginTop: '16px', marginBottom: '8px', fontWeight: 500, color: 'var(--text-secondary)', fontSize: '12px' }}>
-            产品装配设置
+            装配成品设置
           </div>
-          {device.processable_products.map(code => {
+          {device.assembly_products.map(code => {
             const product = canvas.products[code];
             const productName = product?.name || code;
             const hasCustomConfig = device.product_process_times && device.product_process_times[code];
             const isExpanded = expandedProducts.has(code);
-            const upstreamNodes = getUpstreamNodes(code);
-            const validUpstreamIds = new Set(upstreamNodes.map(n => n.id));
+            const componentProducts = getComponentProducts();
             const currentReqs = device.product_upstream_requirements?.[code] || {};
-            const invalidUpstreamIds = Object.keys(currentReqs).filter(id => !validUpstreamIds.has(id));
-            if (invalidUpstreamIds.length > 0) {
+            const validComponentCodes = new Set(componentProducts.map(c => c.code));
+            const invalidComponentCodes = Object.keys(currentReqs).filter(c => !validComponentCodes.has(c));
+            if (invalidComponentCodes.length > 0) {
               const cleanedReqs = { ...currentReqs };
-              for (const id of invalidUpstreamIds) {
-                delete cleanedReqs[id];
+              for (const c of invalidComponentCodes) {
+                delete cleanedReqs[c];
               }
               updateUpstreamRequirements(code, cleanedReqs);
             }
@@ -2582,20 +2652,20 @@ function AssemblySettingsTab({ device, onChange }: { device: AssemblyStation; on
                     
                     <div style={{ marginTop: '12px', paddingLeft: '16px', paddingRight: '16px' }}>
                       <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '8px', color: 'var(--text-secondary)' }}>
-                        上游来料需求
+                        组件需求
                       </div>
-                      {upstreamNodes.length === 0 ? (
+                      {componentProducts.length === 0 ? (
                         <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                          暂无上游节点连接，请先连接上游设备
+                          暂无组件，请先在"产品设置"中添加组件
                         </div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {upstreamNodes.map(node => {
+                          {componentProducts.map(comp => {
                             const currentReqs = device.product_upstream_requirements?.[code] || {};
-                            const quantity = currentReqs[node.id] || 0;
+                            const quantity = currentReqs[comp.code] || 0;
                             return (
                               <div
-                                key={node.id}
+                                key={comp.code}
                                 style={{
                                   display: 'flex',
                                   alignItems: 'center',
@@ -2606,7 +2676,14 @@ function AssemblySettingsTab({ device, onChange }: { device: AssemblyStation; on
                                   background: 'var(--bg-secondary)',
                                 }}
                               >
-                                <span style={{ flex: 1, fontSize: '12px' }}>{node.name}</span>
+                                <span style={{ 
+                                  width: '12px', 
+                                  height: '12px', 
+                                  borderRadius: '2px', 
+                                  background: comp.color,
+                                  border: '1px solid rgba(0,0,0,0.2)'
+                                }} />
+                                <span style={{ flex: 1, fontSize: '12px' }}>{comp.name}</span>
                                 <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>需求数量:</span>
                                 <input
                                   type="number"
@@ -2614,9 +2691,9 @@ function AssemblySettingsTab({ device, onChange }: { device: AssemblyStation; on
                                   onChange={(e) => {
                                     const val = parseInt(e.target.value) || 0;
                                     if (val > 0) {
-                                      updateUpstreamRequirement(code, node.id, val);
+                                      updateUpstreamRequirement(code, comp.code, val);
                                     } else {
-                                      removeUpstreamRequirement(code, node.id);
+                                      removeUpstreamRequirement(code, comp.code);
                                     }
                                   }}
                                   min="0"
@@ -2630,6 +2707,596 @@ function AssemblySettingsTab({ device, onChange }: { device: AssemblyStation; on
                                   }}
                                 />
                                 <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>件</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}
+
+function DisassemblySettingsTab({ device, onChange }: { device: DisassemblyStation; onChange: (field: string, value: string | number | string[] | Record<string, Record<string, number>> | Record<string, ProductProcessTime> | Record<string, string[]> | null) => void }) {
+  const canvas = useAppStore((state) => state.canvas);
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+
+  const toggleItemExpand = (code: string) => {
+    setExpandedItems(prev => {
+      const next = new Set(prev);
+      if (next.has(code)) {
+        next.delete(code);
+      } else {
+        next.add(code);
+      }
+      return next;
+    });
+  };
+
+  const updateProductProcessTime = (productCode: string, config: ProductProcessTime | null) => {
+    const newTimes = { ...device.product_process_times };
+    if (config === null) {
+      delete newTimes[productCode];
+    } else {
+      newTimes[productCode] = config;
+    }
+    onChange('product_process_times', newTimes);
+  };
+
+  const updateProductTools = (productCode: string, tools: Record<string, number>) => {
+    const newTools = { ...device.product_tools };
+    if (Object.keys(tools).length === 0) {
+      delete newTools[productCode];
+    } else {
+      newTools[productCode] = tools;
+    }
+    onChange('product_tools', newTools);
+  };
+
+  const toggleTool = (productCode: string, toolCode: string) => {
+    const currentTools = device.product_tools?.[productCode] || {};
+    const newTools = { ...currentTools };
+    if (newTools[toolCode] !== undefined) {
+      delete newTools[toolCode];
+    } else {
+      newTools[toolCode] = 10;
+    }
+    updateProductTools(productCode, newTools);
+  };
+
+  const updateToolInstallTime = (productCode: string, toolCode: string, installTime: number) => {
+    const currentTools = device.product_tools?.[productCode] || {};
+    const newTools = { ...currentTools, [toolCode]: installTime };
+    updateProductTools(productCode, newTools);
+  };
+
+  const updateDisassemblyRequirements = (itemCode: string, requirements: Record<string, number>) => {
+    const newRequirements = { ...device.product_disassembly_requirements };
+    if (Object.keys(requirements).length === 0) {
+      delete newRequirements[itemCode];
+    } else {
+      newRequirements[itemCode] = requirements;
+    }
+    onChange('product_disassembly_requirements', newRequirements);
+  };
+
+  const updateDisassemblyRequirement = (itemCode: string, productCode: string, quantity: number) => {
+    const currentReqs = device.product_disassembly_requirements?.[itemCode] || {};
+    const newReqs = { ...currentReqs, [productCode]: quantity };
+    updateDisassemblyRequirements(itemCode, newReqs);
+  };
+
+  const removeDisassemblyRequirement = (itemCode: string, productCode: string) => {
+    const currentReqs = device.product_disassembly_requirements?.[itemCode] || {};
+    const newReqs = { ...currentReqs };
+    delete newReqs[productCode];
+    updateDisassemblyRequirements(itemCode, newReqs);
+  };
+
+  const getDisassemblyProductList = () => {
+    const productCodes = device.disassembly_products || [];
+    return productCodes.map(code => {
+      const product = canvas.products[code];
+      return {
+        code,
+        name: product?.name || code,
+        color: product?.color || '#888',
+      };
+    });
+  };
+
+  const renderTimeInputs = (config: ProductProcessTime, productCode: string) => {
+    const updateField = (field: keyof ProductProcessTime, value: number | null) => {
+      const newConfig = { ...config, [field]: value };
+      updateProductProcessTime(productCode, newConfig);
+    };
+
+    const updateDistType = (distType: string) => {
+      const newConfig: ProductProcessTime = {
+        dist_type: distType as ProductProcessTime['dist_type'],
+        avg_time_s: null,
+        stddev_s: null,
+        min_time_s: null,
+        max_time_s: null,
+        mode_time_s: null,
+        uniform_min_s: null,
+        uniform_max_s: null,
+        exp_mean_s: null,
+      };
+      updateProductProcessTime(productCode, newConfig);
+    };
+
+    return (
+      <>
+        <div className="property-row" style={{ paddingLeft: '16px' }}>
+          <span className="property-label">分布类型</span>
+          <select
+            className="property-select"
+            value={config.dist_type}
+            onChange={(e) => updateDistType(e.target.value)}
+          >
+            <option value="normal">正态分布</option>
+            <option value="triangular">三角分布</option>
+            <option value="uniform">均匀分布</option>
+            <option value="exponential">指数分布</option>
+          </select>
+        </div>
+        {config.dist_type === 'normal' && (
+          <>
+            <div className="property-row" style={{ paddingLeft: '16px' }}>
+              <span className="property-label">平均时间</span>
+              <input
+                type="number"
+                className="property-input"
+                value={config.avg_time_s || ''}
+                onChange={(e) => updateField('avg_time_s', parseFloat(e.target.value) || null)}
+                step="0.1"
+                min="0.1"
+              />
+              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            </div>
+            <div className="property-row" style={{ paddingLeft: '16px' }}>
+              <span className="property-label">标准差</span>
+              <input
+                type="number"
+                className="property-input"
+                value={config.stddev_s || ''}
+                onChange={(e) => updateField('stddev_s', parseFloat(e.target.value) || null)}
+                step="0.1"
+                min="0"
+              />
+              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            </div>
+          </>
+        )}
+        {config.dist_type === 'triangular' && (
+          <>
+            <div className="property-row" style={{ paddingLeft: '16px' }}>
+              <span className="property-label">最小时间</span>
+              <input
+                type="number"
+                className="property-input"
+                value={config.min_time_s || ''}
+                onChange={(e) => updateField('min_time_s', parseFloat(e.target.value) || null)}
+                step="0.1"
+                min="0.1"
+              />
+              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            </div>
+            <div className="property-row" style={{ paddingLeft: '16px' }}>
+              <span className="property-label">众数时间</span>
+              <input
+                type="number"
+                className="property-input"
+                value={config.mode_time_s || ''}
+                onChange={(e) => updateField('mode_time_s', parseFloat(e.target.value) || null)}
+                step="0.1"
+                min="0.1"
+              />
+              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            </div>
+            <div className="property-row" style={{ paddingLeft: '16px' }}>
+              <span className="property-label">最大时间</span>
+              <input
+                type="number"
+                className="property-input"
+                value={config.max_time_s || ''}
+                onChange={(e) => updateField('max_time_s', parseFloat(e.target.value) || null)}
+                step="0.1"
+                min="0.1"
+              />
+              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            </div>
+          </>
+        )}
+        {config.dist_type === 'uniform' && (
+          <>
+            <div className="property-row" style={{ paddingLeft: '16px' }}>
+              <span className="property-label">最小时间</span>
+              <input
+                type="number"
+                className="property-input"
+                value={config.uniform_min_s || ''}
+                onChange={(e) => updateField('uniform_min_s', parseFloat(e.target.value) || null)}
+                step="0.1"
+                min="0.1"
+              />
+              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            </div>
+            <div className="property-row" style={{ paddingLeft: '16px' }}>
+              <span className="property-label">最大时间</span>
+              <input
+                type="number"
+                className="property-input"
+                value={config.uniform_max_s || ''}
+                onChange={(e) => updateField('uniform_max_s', parseFloat(e.target.value) || null)}
+                step="0.1"
+                min="0.1"
+              />
+              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            </div>
+          </>
+        )}
+        {config.dist_type === 'exponential' && (
+          <div className="property-row" style={{ paddingLeft: '16px' }}>
+            <span className="property-label">平均时间</span>
+            <input
+              type="number"
+              className="property-input"
+              value={config.exp_mean_s || ''}
+              onChange={(e) => updateField('exp_mean_s', parseFloat(e.target.value) || null)}
+              step="0.1"
+              min="0.1"
+            />
+            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+          </div>
+        )}
+      </>
+    );
+  };
+
+  return (
+    <div className="property-group">
+      <div style={{ marginTop: '12px', marginBottom: '8px', fontWeight: 500, color: 'var(--text-secondary)', fontSize: '12px' }}>
+        默认拆解时间
+      </div>
+      <div className="property-row">
+        <span className="property-label">分布类型</span>
+        <select
+          className="property-select"
+          value={device.dist_type}
+          onChange={(e) => onChange('dist_type', e.target.value)}
+        >
+          <option value="normal">正态分布</option>
+          <option value="triangular">三角分布</option>
+          <option value="uniform">均匀分布</option>
+          <option value="exponential">指数分布</option>
+        </select>
+      </div>
+      {device.dist_type === 'normal' && (
+        <>
+          <div className="property-row">
+            <span className="property-label">平均时间</span>
+            <input
+              type="number"
+              className="property-input"
+              value={device.avg_time_s || ''}
+              onChange={(e) => onChange('avg_time_s', parseFloat(e.target.value))}
+              step="0.1"
+              min="0.1"
+            />
+            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+          </div>
+          <div className="property-row">
+            <span className="property-label">标准差</span>
+            <input
+              type="number"
+              className="property-input"
+              value={device.stddev_s || ''}
+              onChange={(e) => onChange('stddev_s', parseFloat(e.target.value))}
+              step="0.1"
+              min="0"
+            />
+            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+          </div>
+        </>
+      )}
+      {device.dist_type === 'triangular' && (
+        <>
+          <div className="property-row">
+            <span className="property-label">最小时间</span>
+            <input
+              type="number"
+              className="property-input"
+              value={device.min_time_s || ''}
+              onChange={(e) => onChange('min_time_s', parseFloat(e.target.value))}
+              step="0.1"
+              min="0.1"
+            />
+            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+          </div>
+          <div className="property-row">
+            <span className="property-label">众数时间</span>
+            <input
+              type="number"
+              className="property-input"
+              value={device.mode_time_s || ''}
+              onChange={(e) => onChange('mode_time_s', parseFloat(e.target.value))}
+              step="0.1"
+              min="0.1"
+            />
+            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+          </div>
+          <div className="property-row">
+            <span className="property-label">最大时间</span>
+            <input
+              type="number"
+              className="property-input"
+              value={device.max_time_s || ''}
+              onChange={(e) => onChange('max_time_s', parseFloat(e.target.value))}
+              step="0.1"
+              min="0.1"
+            />
+            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+          </div>
+        </>
+      )}
+      {device.dist_type === 'uniform' && (
+        <>
+          <div className="property-row">
+            <span className="property-label">最小时间</span>
+            <input
+              type="number"
+              className="property-input"
+              value={device.uniform_min_s || ''}
+              onChange={(e) => onChange('uniform_min_s', parseFloat(e.target.value))}
+              step="0.1"
+              min="0.1"
+            />
+            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+          </div>
+          <div className="property-row">
+            <span className="property-label">最大时间</span>
+            <input
+              type="number"
+              className="property-input"
+              value={device.uniform_max_s || ''}
+              onChange={(e) => onChange('uniform_max_s', parseFloat(e.target.value))}
+              step="0.1"
+              min="0.1"
+            />
+            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+          </div>
+        </>
+      )}
+      {device.dist_type === 'exponential' && (
+        <div className="property-row">
+          <span className="property-label">平均时间</span>
+          <input
+            type="number"
+            className="property-input"
+            value={device.exp_mean_s || ''}
+            onChange={(e) => onChange('exp_mean_s', parseFloat(e.target.value))}
+            step="0.1"
+            min="0.1"
+          />
+          <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+        </div>
+      )}
+
+      {device.items_to_disassemble && device.items_to_disassemble.length > 0 && (
+        <>
+          <div style={{ marginTop: '16px', marginBottom: '8px', fontWeight: 500, color: 'var(--text-secondary)', fontSize: '12px' }}>
+            待拆解品设置
+          </div>
+          {device.items_to_disassemble.map(code => {
+            const product = canvas.products[code];
+            const productName = product?.name || code;
+            const hasCustomConfig = device.product_process_times && device.product_process_times[code];
+            const isExpanded = expandedItems.has(code);
+            const disassemblyProductList = getDisassemblyProductList();
+            const currentReqs = device.product_disassembly_requirements?.[code] || {};
+            const validProductCodes = new Set(disassemblyProductList.map(p => p.code));
+            const invalidProductCodes = Object.keys(currentReqs).filter(c => !validProductCodes.has(c));
+            if (invalidProductCodes.length > 0) {
+              const cleanedReqs = { ...currentReqs };
+              for (const c of invalidProductCodes) {
+                delete cleanedReqs[c];
+              }
+              updateDisassemblyRequirements(code, cleanedReqs);
+            }
+            
+            return (
+              <div key={code} style={{ marginBottom: '8px', border: '1px solid var(--border-light)', borderRadius: '4px' }}>
+                <div 
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    padding: '8px 12px',
+                    cursor: 'pointer',
+                    background: 'var(--bg-secondary)',
+                    borderRadius: '4px',
+                  }}
+                  onClick={() => toggleItemExpand(code)}
+                >
+                  <span style={{ marginRight: '8px', fontSize: '10px' }}>{isExpanded ? '▼' : '▶'}</span>
+                  <span style={{ 
+                    width: '12px', 
+                    height: '12px', 
+                    borderRadius: '2px', 
+                    background: product?.color || '#888',
+                    marginRight: '8px',
+                    border: '1px solid rgba(0,0,0,0.2)'
+                  }} />
+                  <span style={{ flex: 1, fontSize: '12px' }}>{productName}</span>
+                  <span style={{ 
+                    fontSize: '10px', 
+                    padding: '2px 6px', 
+                    borderRadius: '3px',
+                    background: hasCustomConfig ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+                    color: hasCustomConfig ? 'white' : 'var(--text-muted)'
+                  }}>
+                    {hasCustomConfig ? '自定义' : '默认'}
+                  </span>
+                </div>
+                
+                {isExpanded && (
+                  <div style={{ padding: '8px 0' }}>
+                    <div className="property-row" style={{ paddingLeft: '16px' }}>
+                      <span className="property-label">时间设置</span>
+                      <select
+                        className="property-select"
+                        value={hasCustomConfig ? 'custom' : 'default'}
+                        onChange={(e) => {
+                          if (e.target.value === 'default') {
+                            updateProductProcessTime(code, null);
+                          } else {
+                            updateProductProcessTime(code, {
+                              dist_type: device.dist_type,
+                              avg_time_s: device.avg_time_s,
+                              stddev_s: device.stddev_s,
+                              min_time_s: device.min_time_s,
+                              max_time_s: device.max_time_s,
+                              mode_time_s: device.mode_time_s,
+                              uniform_min_s: device.uniform_min_s,
+                              uniform_max_s: device.uniform_max_s,
+                              exp_mean_s: device.exp_mean_s,
+                            });
+                          }
+                        }}
+                      >
+                        <option value="default">使用默认设置</option>
+                        <option value="custom">自定义设置</option>
+                      </select>
+                    </div>
+                    
+                    {hasCustomConfig && renderTimeInputs(device.product_process_times[code], code)}
+                    
+                    <div style={{ marginTop: '12px', paddingLeft: '16px', paddingRight: '16px' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '8px', color: 'var(--text-secondary)' }}>
+                        拆解工具
+                      </div>
+                      {Object.keys(canvas.tools).length === 0 ? (
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                          暂无工具，请在"设置"菜单中添加工具
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {Object.values(canvas.tools).map(tool => {
+                            const currentTools = device.product_tools?.[code] || {};
+                            const isSelected = currentTools[tool.code] !== undefined;
+                            const installTime = currentTools[tool.code] || 10;
+                            return (
+                              <div
+                                key={tool.code}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  padding: '6px 8px',
+                                  borderRadius: '4px',
+                                  border: `1px solid ${isSelected ? 'var(--accent-primary)' : 'var(--border-light)'}`,
+                                  background: isSelected ? 'rgba(59, 130, 246, 0.1)' : 'var(--bg-secondary)',
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleTool(code, tool.code)}
+                                  style={{ cursor: 'pointer' }}
+                                />
+                                <span style={{ flex: 1, fontSize: '12px' }}>{tool.name} ({tool.code})</span>
+                                {isSelected && (
+                                  <>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>安装时间:</span>
+                                    <input
+                                      type="number"
+                                      value={installTime}
+                                      onChange={(e) => updateToolInstallTime(code, tool.code, parseFloat(e.target.value) || 0)}
+                                      min="0"
+                                      step="1"
+                                      style={{
+                                        width: '60px',
+                                        padding: '2px 4px',
+                                        fontSize: '11px',
+                                        border: '1px solid var(--border-light)',
+                                        borderRadius: '3px',
+                                      }}
+                                    />
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>秒</span>
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div style={{ marginTop: '12px', paddingLeft: '16px', paddingRight: '16px' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 500, marginBottom: '8px', color: 'var(--text-secondary)' }}>
+                        拆解产物数量
+                      </div>
+                      {disassemblyProductList.length === 0 ? (
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                          暂无拆解产物，请先在"产品设置"中添加拆解产物
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {disassemblyProductList.map(dp => {
+                            const currentReqs = device.product_disassembly_requirements?.[code] || {};
+                            const quantity = currentReqs[dp.code] || 0;
+                            return (
+                              <div
+                                key={dp.code}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  padding: '6px 8px',
+                                  borderRadius: '4px',
+                                  border: '1px solid var(--border-light)',
+                                  background: 'var(--bg-secondary)',
+                                }}
+                              >
+                                <span style={{ 
+                                  width: '12px', 
+                                  height: '12px', 
+                                  borderRadius: '2px', 
+                                  background: dp.color,
+                                  border: '1px solid rgba(0,0,0,0.2)'
+                                }} />
+                                <span style={{ flex: 1, fontSize: '12px' }}>{dp.name}</span>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>产出数量:</span>
+                                <input
+                                  type="number"
+                                  value={quantity}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value) || 0;
+                                    if (val > 0) {
+                                      updateDisassemblyRequirement(code, dp.code, val);
+                                    } else {
+                                      removeDisassemblyRequirement(code, dp.code);
+                                    }
+                                  }}
+                                  min="0"
+                                  step="1"
+                                  style={{
+                                    width: '60px',
+                                    padding: '2px 4px',
+                                    fontSize: '11px',
+                                    border: '1px solid var(--border-light)',
+                                    borderRadius: '3px',
+                                  }}
+                                />
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>份</span>
                               </div>
                             );
                           })}

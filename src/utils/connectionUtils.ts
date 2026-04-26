@@ -38,6 +38,15 @@ export function getDeviceSizePx(device: Device, zoom: number, pxPerMm: number): 
         h = deviceToPx(device.params.height || 252, zoom, pxPerMm);
       }
       break;
+    case 'inverted_trap':
+      if (device.type === 'DisassemblyStation') {
+        w = deviceToPx(device.params.height || 200, zoom, pxPerMm);
+        h = deviceToPx(device.params.bottom_width || 500, zoom, pxPerMm);
+      } else {
+        w = deviceToPx(device.params.bottom || 210, zoom, pxPerMm);
+        h = deviceToPx(device.params.height || 252, zoom, pxPerMm);
+      }
+      break;
   }
   if (device.type === 'Workshop') {
     const workshop = device as Workshop;

@@ -288,6 +288,15 @@ export default function Canvas() {
           h = device.params.height || 300;
         }
         break;
+      case 'inverted_trap':
+        if (device.type === 'DisassemblyStation') {
+          w = device.params.height || 200;
+          h = device.params.bottom_width || 500;
+        } else {
+          w = device.params.bottom || 300;
+          h = device.params.height || 300;
+        }
+        break;
     }
     if (device.type === 'Workshop') {
       const workshop = device as import('../types').Workshop;
@@ -388,6 +397,15 @@ export default function Canvas() {
           break;
         case 'trap':
           if (device.type === 'AssemblyStation') {
+            w = deviceToPx(device.params.height || 200, zoom, pxPerMm);
+            h = deviceToPx(device.params.bottom_width || 500, zoom, pxPerMm);
+          } else {
+            w = deviceToPx(device.params.bottom || 210, zoom, pxPerMm);
+            h = deviceToPx(device.params.height || 252, zoom, pxPerMm);
+          }
+          break;
+        case 'inverted_trap':
+          if (device.type === 'DisassemblyStation') {
             w = deviceToPx(device.params.height || 200, zoom, pxPerMm);
             h = deviceToPx(device.params.bottom_width || 500, zoom, pxPerMm);
           } else {
@@ -614,6 +632,21 @@ export default function Canvas() {
               break;
             case 'trap':
               if (device.type === 'AssemblyStation') {
+                const topWidth = device.params.top_width || 300;
+                const bottomWidth = device.params.bottom_width || 500;
+                const ratio = topWidth / bottomWidth;
+                updatedParams = { 
+                  ...updatedParams, 
+                  height: newW_mm, 
+                  bottom_width: newH_mm,
+                  top_width: newH_mm * ratio,
+                };
+              } else {
+                updatedParams = { ...updatedParams, bottom: newW_mm, height: newH_mm };
+              }
+              break;
+            case 'inverted_trap':
+              if (device.type === 'DisassemblyStation') {
                 const topWidth = device.params.top_width || 300;
                 const bottomWidth = device.params.bottom_width || 500;
                 const ratio = topWidth / bottomWidth;
@@ -1191,6 +1224,36 @@ export default function Canvas() {
           product_upstream_requirements: {},
         };
         break;
+      case 'disassembly_station':
+        device = {
+          id,
+          type: 'DisassemblyStation',
+          shape_type: 'inverted_trap',
+          x_mm,
+          y_mm,
+          params: { top_width: 150, bottom_width: 210, height: 350, rotation_deg: 0 },
+          fill: '#FFF3E0',
+          outline: '#FF9800',
+          equip_id: '',
+          name: `拆解站`,
+          desc: '',
+          tag: '',
+          items_to_disassemble: [],
+          disassembly_products: [],
+          dist_type: 'normal',
+          avg_time_s: 1,
+          stddev_s: null,
+          min_time_s: null,
+          max_time_s: null,
+          mode_time_s: null,
+          uniform_min_s: null,
+          uniform_max_s: null,
+          exp_mean_s: null,
+          product_process_times: {},
+          product_tools: {},
+          product_disassembly_requirements: {},
+        };
+        break;
       default:
         return;
     }
@@ -1553,6 +1616,58 @@ export default function Canvas() {
             <g data-device-id={device.id} filter="url(#dropShadow)">
               <polygon
                 points={`${centerX},${topY} ${rightX},${roofBaseY} ${rightX},${bottomY} ${leftX},${bottomY} ${leftX},${roofBaseY}`}
+                fill="#FFF7ED"
+                stroke={isSelected ? '#5B8DEF' : device.outline}
+                strokeWidth={isSelected ? 2.5 : 1.5}
+                style={{ cursor: toolMode === 'select' ? 'move' : 'pointer' }}
+              />
+            </g>
+          );
+        }
+        break;
+      }
+      case 'inverted_trap': {
+        if (device.type === 'DisassemblyStation') {
+          const leftWidth = deviceToPx(device.params.bottom_width || 500, zoom, pxPerMm);
+          const rightWidth = deviceToPx(device.params.top_width || 300, zoom, pxPerMm);
+          const trapHeight = deviceToPx(device.params.height || 200, zoom, pxPerMm);
+          w = trapHeight;
+          h = leftWidth;
+          
+          const topLeft = 0;
+          const bottomLeft = leftWidth;
+          const topRight = (leftWidth - rightWidth) / 2;
+          const bottomRight = topRight + rightWidth;
+          
+          element = (
+            <g data-device-id={device.id} filter="url(#dropShadow)">
+              <polygon
+                points={`${trapHeight},${topLeft} ${topLeft},${topRight} ${topLeft},${bottomRight} ${trapHeight},${bottomLeft}`}
+                fill={device.fill}
+                stroke={isSelected ? '#5B8DEF' : device.outline}
+                strokeWidth={isSelected ? 2.5 : 1.5}
+                style={{ cursor: toolMode === 'select' ? 'move' : 'pointer' }}
+              />
+            </g>
+          );
+        } else {
+          const baseWidth = deviceToPx(device.params.bottom || 210, zoom, pxPerMm);
+          const totalHeight = deviceToPx(device.params.height || 252, zoom, pxPerMm);
+          const roofHeight = totalHeight * 0.3;
+          w = baseWidth;
+          h = totalHeight;
+          
+          const leftX = 0;
+          const rightX = baseWidth;
+          const topY = 0;
+          const roofBaseY = roofHeight;
+          const bottomY = totalHeight;
+          const centerX = baseWidth / 2;
+          
+          element = (
+            <g data-device-id={device.id} filter="url(#dropShadow)">
+              <polygon
+                points={`${centerX},${bottomY} ${leftX},${roofBaseY} ${leftX},${topY} ${rightX},${topY} ${rightX},${roofBaseY}`}
                 fill="#FFF7ED"
                 stroke={isSelected ? '#5B8DEF' : device.outline}
                 strokeWidth={isSelected ? 2.5 : 1.5}

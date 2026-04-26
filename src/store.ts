@@ -1068,6 +1068,24 @@ export const useAppStore = create<AppState>((set) => ({
           }
         }
       }
+
+      if (result.disassembly_station_errors && result.disassembly_station_errors.length > 0) {
+        for (const error of result.disassembly_station_errors) {
+          if (error.error_type === 'NoItemToDisassemble') {
+            errors.push(`拆解站「${error.name}」未选择任何待拆解品`);
+          } else if (error.error_type === 'NoDisassemblyProduct') {
+            errors.push(`拆解站「${error.name}」未选择任何拆解产物`);
+          } else if (error.error_type === 'NoProductForItem') {
+            errors.push(`拆解站「${error.name}」的待拆解品「${error.product_name || error.product_code}」未设置拆解产物数量`);
+          } else if (error.error_type === 'DisassemblyProductQuantityZero') {
+            errors.push(`拆解站「${error.name}」的待拆解品「${error.product_name || error.product_code}」的拆解产物「${error.disassembly_product_name || error.disassembly_product_code}」产出数量为 0`);
+          } else if (error.error_type === 'ItemUnreachable') {
+            errors.push(`拆解站「${error.name}」的待拆解品「${error.product_name || error.product_code}」无法从起点或上游拆解站获取`);
+          } else if (error.error_type === 'AssemblyProductAsItem') {
+            errors.push(`拆解站「${error.name}」的待拆解品「${error.product_name || error.product_code}」是装配成品，不能作为待拆解品`);
+          }
+        }
+      }
       
       if (!result.all_start_nodes_have_product) {
         for (const node of result.start_nodes_without_product) {

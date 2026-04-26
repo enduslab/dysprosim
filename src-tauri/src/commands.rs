@@ -42,6 +42,7 @@ pub fn add_device(state: State<'_, AppState>, mut device: Device) -> Result<AddD
         Device::EndNode(_) => ("END", "终点", 3),
         Device::Station(_) => ("EQUI", "设备", 3),
         Device::AssemblyStation(_) => ("ASS", "装配站", 3),
+        Device::DisassemblyStation(_) => ("DIS", "拆解站", 3),
         Device::Warehouse(_) => ("WH", "仓库", 3),
         Device::TempStore(_) => ("TMP", "临时堆场", 3),
         Device::Buffer(_) => ("BUF", "缓冲区", 3),
@@ -73,6 +74,10 @@ pub fn add_device(state: State<'_, AppState>, mut device: Device) -> Result<AddD
             d.base.name = new_name.clone();
         }
         Device::AssemblyStation(d) => {
+            d.base.id = new_id.clone();
+            d.base.name = new_name.clone();
+        }
+        Device::DisassemblyStation(d) => {
             d.base.id = new_id.clone();
             d.base.name = new_name.clone();
         }
@@ -528,8 +533,9 @@ pub fn get_product_routes(state: State<'_, AppState>) -> Result<ProductRouteChec
     let all_start_nodes_have_product = start_nodes_without_product.is_empty();
     
     let assembly_station_errors = check_assembly_stations(&canvas);
+    let disassembly_station_errors = check_disassembly_stations(&canvas);
     
-    let has_errors = !all_start_nodes_have_product || !assembly_station_errors.is_empty();
+    let has_errors = !all_start_nodes_have_product || !assembly_station_errors.is_empty() || !disassembly_station_errors.is_empty();
     
     if has_errors {
         return Ok(ProductRouteCheckResult {
@@ -538,13 +544,643 @@ pub fn get_product_routes(state: State<'_, AppState>) -> Result<ProductRouteChec
             routes: Vec::new(),
             incomplete_route_start_nodes: Vec::new(),
             assembly_station_errors,
+            disassembly_station_errors,
         });
     }
     
     let mut routes: Vec<ProductRoute> = Vec::new();
     let mut incomplete_route_start_nodes: Vec<StartNodeInfo> = Vec::new();
     
+    let assembly_stations: Vec<(String, String, Vec<String>, Vec<String>)> = canvas.devices
+        .values()
+        .filter_map(|device| {
+            if let Device::AssemblyStation(a) = device {
+                Some((a.base.id.clone(), a.base.name.clone(), a.components.clone(), a.assembly_products.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    for (assembly_id, assembly_name, components, _) in &assembly_stations {
+        for component_code in components {
+            let mut upstream_paths: Vec<Vec<String>> = Vec::new();
+            let mut visited_upstream: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut queue: std::collections::VecDeque<Vec<String>> = std::collections::VecDeque::new();
+            queue.push_back(vec![assembly_id.clone()]);
+            
+            while let Some(path) = queue.pop_front() {
+                let first_node = path.first().unwrap().clone();
+                
+                if visited_upstream.contains(&first_node) {
+                    continue;
+                }
+                visited_upstream.insert(first_node.clone());
+                
+                if let Some(device) = canvas.devices.get(&first_node) {
+                    if let Device::StartNode(sn) = device {
+                        if sn.product_code == *component_code {
+                            upstream_paths.push(path.clone());
+                            continue;
+                        }
+                    }
+                }
+                
+                let incoming: Vec<_> = canvas.connections
+                    .values()
+                    .filter(|c| c.to_device_id == first_node)
+                    .collect();
+                
+                for conn in incoming {
+                    let from_device_id = &conn.from_device_id;
+                    if !path.contains(from_device_id) {
+                        let mut new_path = vec![from_device_id.clone()];
+                        new_path.extend(path.clone());
+                        queue.push_back(new_path);
+                    }
+                }
+            }
+            
+            for upstream_path in &upstream_paths {
+                let full_path = upstream_path.clone();
+                let path_names: Vec<String> = full_path.iter()
+                    .filter_map(|id| canvas.devices.get(id).map(|d| d.name().to_string()))
+                    .collect();
+                
+                let first_node_id = full_path.first().unwrap().clone();
+                let first_node_name = canvas.devices.get(&first_node_id)
+                    .map(|d| d.name().to_string())
+                    .unwrap_or_default();
+                
+                let step_materials: Vec<HashMap<String, f64>> = full_path.iter()
+                    .filter_map(|id| {
+                        if let Some(Device::Station(s)) = canvas.devices.get(id) {
+                            return Some(s.product_materials.get(component_code).cloned().unwrap_or_default());
+                        }
+                        None
+                    })
+                    .collect();
+                
+                routes.push(ProductRoute {
+                    product_code: component_code.clone(),
+                    start_node_id: first_node_id,
+                    start_node_name: first_node_name,
+                    path: full_path,
+                    path_names,
+                    end_node_id: Some(assembly_id.clone()),
+                    end_node_name: Some(assembly_name.clone()),
+                    is_complete: true,
+                    step_materials,
+                    assembly_node_id: Some(assembly_id.clone()),
+                    assembly_node_name: Some(assembly_name.clone()),
+                    branch_paths: vec![],
+                    route_type: crate::models::RouteType::ComponentToAssembly,
+                });
+            }
+        }
+    }
+
+    for (assembly_id, assembly_name, _, assembly_products) in &assembly_stations {
+        for product_code in assembly_products {
+            let mut downstream_paths: Vec<Vec<String>> = Vec::new();
+            let mut visited_downstream: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut queue: std::collections::VecDeque<Vec<String>> = std::collections::VecDeque::new();
+            queue.push_back(vec![assembly_id.clone()]);
+            
+            while let Some(path) = queue.pop_front() {
+                let last_node = path.last().unwrap().clone();
+                
+                if visited_downstream.contains(&last_node) {
+                    continue;
+                }
+                visited_downstream.insert(last_node.clone());
+                
+                if let Some(device) = canvas.devices.get(&last_node) {
+                    if device.is_end() {
+                        downstream_paths.push(path.clone());
+                        continue;
+                    }
+                }
+                
+                if let Some(Device::AssemblyStation(a)) = canvas.devices.get(&last_node) {
+                    if a.base.id != *assembly_id {
+                        let is_component = if !a.components.is_empty() {
+                            a.components.contains(product_code)
+                        } else if !a.processable_products.is_empty() {
+                            a.processable_products.contains(product_code)
+                        } else {
+                            false
+                        };
+                        if is_component {
+                            downstream_paths.push(path.clone());
+                            continue;
+                        }
+                    }
+                }
+                
+                let outgoing: Vec<_> = canvas.connections
+                    .values()
+                    .filter(|c| c.from_device_id == last_node)
+                    .collect();
+                
+                let mut has_valid_downstream = false;
+                for conn in outgoing {
+                    let to_device_id = &conn.to_device_id;
+                    if let Some(to_device) = canvas.devices.get(to_device_id) {
+                        let can_process = match to_device {
+                            Device::Station(s) => {
+                                if !s.processable_products.is_empty() {
+                                    s.processable_products.contains(&product_code.to_string())
+                                } else if !s.product_code.is_empty() {
+                                    &s.product_code == product_code
+                                } else {
+                                    true
+                                }
+                            }
+                            Device::AssemblyStation(a) => {
+                                if !a.components.is_empty() {
+                                    a.components.contains(&product_code.to_string())
+                                } else if !a.processable_products.is_empty() {
+                                    a.processable_products.contains(&product_code.to_string())
+                                } else {
+                                    true
+                                }
+                            }
+                            Device::EndNode(_) => true,
+                            Device::Warehouse(w) => {
+                                if !w.processable_products.is_empty() {
+                                    w.processable_products.contains(&product_code.to_string())
+                                } else if !w.product_code.is_empty() {
+                                    &w.product_code == product_code
+                                } else {
+                                    true
+                                }
+                            }
+                            Device::TempStore(t) => {
+                                if !t.processable_products.is_empty() {
+                                    t.processable_products.contains(&product_code.to_string())
+                                } else if !t.product_code.is_empty() {
+                                    &t.product_code == product_code
+                                } else {
+                                    true
+                                }
+                            }
+                            Device::Buffer(b) => {
+                                if !b.processable_products.is_empty() {
+                                    b.processable_products.contains(&product_code.to_string())
+                                } else if !b.product_code.is_empty() {
+                                    &b.product_code == product_code
+                                } else {
+                                    true
+                                }
+                            }
+                            Device::StartNode(_) => false,
+                            Device::Workshop(_) => false,
+                            Device::DisassemblyStation(_) => false,
+                        };
+                        
+                        if can_process && !path.contains(to_device_id) {
+                            let mut new_path = path.clone();
+                            new_path.push(to_device_id.clone());
+                            queue.push_back(new_path);
+                            has_valid_downstream = true;
+                        }
+                    }
+                }
+                
+                if !has_valid_downstream && path.len() > 1 {
+                    downstream_paths.push(path);
+                }
+            }
+            
+            for downstream_path in &downstream_paths {
+                let full_path = downstream_path.clone();
+                let path_names: Vec<String> = full_path.iter()
+                    .filter_map(|id| canvas.devices.get(id).map(|d| d.name().to_string()))
+                    .collect();
+                
+                let last_node_id = full_path.last().unwrap();
+                let last_device = canvas.devices.get(last_node_id);
+                
+                let is_end = last_device.map_or(false, |d| d.is_end());
+                let is_component_at_assembly = last_device.map_or(false, |d| {
+                    if let Device::AssemblyStation(a) = d {
+                        if a.base.id != *assembly_id {
+                            let is_comp = if !a.components.is_empty() {
+                                a.components.contains(product_code)
+                            } else if !a.processable_products.is_empty() {
+                                a.processable_products.contains(product_code)
+                            } else {
+                                false
+                            };
+                            return is_comp;
+                        }
+                    }
+                    false
+                });
+                
+                let is_complete = is_end || is_component_at_assembly;
+                
+                let end_node_id = if is_complete {
+                    Some(last_node_id.clone())
+                } else {
+                    None
+                };
+                
+                let end_node_name = if let Some(ref id) = end_node_id {
+                    canvas.devices.get(id).map(|d| d.name().to_string())
+                } else {
+                    None
+                };
+                
+                let step_materials: Vec<HashMap<String, f64>> = full_path.iter()
+                    .filter_map(|id| {
+                        if let Some(Device::Station(s)) = canvas.devices.get(id) {
+                            return Some(s.product_materials.get(product_code).cloned().unwrap_or_default());
+                        }
+                        None
+                    })
+                    .collect();
+                
+                routes.push(ProductRoute {
+                    product_code: product_code.clone(),
+                    start_node_id: assembly_id.clone(),
+                    start_node_name: assembly_name.clone(),
+                    path: full_path,
+                    path_names,
+                    end_node_id,
+                    end_node_name,
+                    is_complete,
+                    step_materials,
+                    assembly_node_id: Some(assembly_id.clone()),
+                    assembly_node_name: Some(assembly_name.clone()),
+                    branch_paths: vec![],
+                    route_type: crate::models::RouteType::AssemblyToEnd,
+                });
+            }
+        }
+    }
+
+    let disassembly_stations: Vec<(String, String, Vec<String>, Vec<String>)> = canvas.devices
+        .values()
+        .filter_map(|device| {
+            if let Device::DisassemblyStation(d) = device {
+                Some((d.base.id.clone(), d.base.name.clone(), d.items_to_disassemble.clone(), d.disassembly_products.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    for (disassembly_id, disassembly_name, items_to_disassemble, _) in &disassembly_stations {
+        for item_code in items_to_disassemble {
+            let mut upstream_paths: Vec<Vec<String>> = Vec::new();
+            let mut visited_upstream: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut queue: std::collections::VecDeque<Vec<String>> = std::collections::VecDeque::new();
+            queue.push_back(vec![disassembly_id.clone()]);
+
+            while let Some(path) = queue.pop_front() {
+                let first_node = path.first().unwrap().clone();
+
+                if visited_upstream.contains(&first_node) {
+                    continue;
+                }
+                visited_upstream.insert(first_node.clone());
+
+                if let Some(device) = canvas.devices.get(&first_node) {
+                    if let Device::StartNode(sn) = device {
+                        if sn.product_code == *item_code {
+                            upstream_paths.push(path.clone());
+                            continue;
+                        }
+                    }
+                    if let Device::DisassemblyStation(ds) = device {
+                        if ds.base.id != *disassembly_id && ds.disassembly_products.contains(item_code) {
+                            upstream_paths.push(path.clone());
+                            continue;
+                        }
+                    }
+                }
+
+                let incoming: Vec<_> = canvas.connections
+                    .values()
+                    .filter(|c| c.to_device_id == first_node)
+                    .collect();
+
+                for conn in incoming {
+                    let from_device_id = &conn.from_device_id;
+                    if !path.contains(from_device_id) {
+                        if let Some(from_device) = canvas.devices.get(from_device_id) {
+                            let can_traverse = match from_device {
+                                Device::StartNode(_) => true,
+                                Device::Station(s) => {
+                                    if !s.processable_products.is_empty() {
+                                        s.processable_products.contains(&item_code.to_string())
+                                    } else if !s.product_code.is_empty() {
+                                        &s.product_code == item_code
+                                    } else {
+                                        true
+                                    }
+                                }
+                                Device::DisassemblyStation(_) => true,
+                                Device::Warehouse(_) | Device::Buffer(_) | Device::TempStore(_) => true,
+                                Device::AssemblyStation(_) => false,
+                                Device::EndNode(_) | Device::Workshop(_) => false,
+                            };
+                            if can_traverse {
+                                let mut new_path = vec![from_device_id.clone()];
+                                new_path.extend(path.clone());
+                                queue.push_back(new_path);
+                            }
+                        }
+                    }
+                }
+            }
+
+            for upstream_path in &upstream_paths {
+                let full_path = upstream_path.clone();
+                let path_names: Vec<String> = full_path.iter()
+                    .filter_map(|id| canvas.devices.get(id).map(|d| d.name().to_string()))
+                    .collect();
+
+                let first_node_id = full_path.first().unwrap().clone();
+                let first_node_name = canvas.devices.get(&first_node_id)
+                    .map(|d| d.name().to_string())
+                    .unwrap_or_default();
+
+                let step_materials: Vec<HashMap<String, f64>> = full_path.iter()
+                    .filter_map(|id| {
+                        if let Some(Device::Station(s)) = canvas.devices.get(id) {
+                            return Some(s.product_materials.get(item_code).cloned().unwrap_or_default());
+                        }
+                        None
+                    })
+                    .collect();
+
+                routes.push(ProductRoute {
+                    product_code: item_code.clone(),
+                    start_node_id: first_node_id,
+                    start_node_name: first_node_name,
+                    path: full_path,
+                    path_names,
+                    end_node_id: Some(disassembly_id.clone()),
+                    end_node_name: Some(disassembly_name.clone()),
+                    is_complete: true,
+                    step_materials,
+                    assembly_node_id: None,
+                    assembly_node_name: None,
+                    branch_paths: vec![],
+                    route_type: crate::models::RouteType::InputToDisassembly,
+                });
+            }
+        }
+    }
+
+    for (disassembly_id, disassembly_name, _, disassembly_products) in &disassembly_stations {
+        for product_code in disassembly_products {
+            let mut downstream_paths: Vec<Vec<String>> = Vec::new();
+            let mut visited_downstream: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut queue: std::collections::VecDeque<Vec<String>> = std::collections::VecDeque::new();
+            queue.push_back(vec![disassembly_id.clone()]);
+
+            while let Some(path) = queue.pop_front() {
+                let last_node = path.last().unwrap().clone();
+
+                if visited_downstream.contains(&last_node) {
+                    continue;
+                }
+                visited_downstream.insert(last_node.clone());
+
+                if let Some(device) = canvas.devices.get(&last_node) {
+                    if device.is_end() {
+                        downstream_paths.push(path.clone());
+                        continue;
+                    }
+                }
+
+                if let Some(Device::AssemblyStation(a)) = canvas.devices.get(&last_node) {
+                    if a.base.id != *disassembly_id {
+                        let is_component = if !a.components.is_empty() {
+                            a.components.contains(product_code)
+                        } else if !a.processable_products.is_empty() {
+                            a.processable_products.contains(product_code)
+                        } else {
+                            false
+                        };
+                        if is_component {
+                            downstream_paths.push(path.clone());
+                            continue;
+                        }
+                    }
+                }
+
+                if let Some(Device::DisassemblyStation(ds)) = canvas.devices.get(&last_node) {
+                    if ds.base.id != *disassembly_id {
+                        let is_item = ds.items_to_disassemble.contains(product_code);
+                        if is_item {
+                            downstream_paths.push(path.clone());
+                            continue;
+                        }
+                    }
+                }
+
+                let outgoing: Vec<_> = canvas.connections
+                    .values()
+                    .filter(|c| c.from_device_id == last_node)
+                    .collect();
+
+                let mut has_valid_downstream = false;
+                for conn in outgoing {
+                    let to_device_id = &conn.to_device_id;
+                    if let Some(to_device) = canvas.devices.get(to_device_id) {
+                        let can_process = match to_device {
+                            Device::Station(s) => {
+                                if !s.processable_products.is_empty() {
+                                    s.processable_products.contains(&product_code.to_string())
+                                } else if !s.product_code.is_empty() {
+                                    &s.product_code == product_code
+                                } else {
+                                    true
+                                }
+                            }
+                            Device::AssemblyStation(a) => {
+                                if !a.components.is_empty() {
+                                    a.components.contains(&product_code.to_string())
+                                } else if !a.processable_products.is_empty() {
+                                    a.processable_products.contains(&product_code.to_string())
+                                } else {
+                                    true
+                                }
+                            }
+                            Device::DisassemblyStation(d) => {
+                                d.items_to_disassemble.contains(&product_code.to_string())
+                            }
+                            Device::EndNode(_) => true,
+                            Device::Warehouse(w) => {
+                                if !w.processable_products.is_empty() {
+                                    w.processable_products.contains(&product_code.to_string())
+                                } else if !w.product_code.is_empty() {
+                                    &w.product_code == product_code
+                                } else {
+                                    true
+                                }
+                            }
+                            Device::TempStore(t) => {
+                                if !t.processable_products.is_empty() {
+                                    t.processable_products.contains(&product_code.to_string())
+                                } else if !t.product_code.is_empty() {
+                                    &t.product_code == product_code
+                                } else {
+                                    true
+                                }
+                            }
+                            Device::Buffer(b) => {
+                                if !b.processable_products.is_empty() {
+                                    b.processable_products.contains(&product_code.to_string())
+                                } else if !b.product_code.is_empty() {
+                                    &b.product_code == product_code
+                                } else {
+                                    true
+                                }
+                            }
+                            Device::StartNode(_) => false,
+                            Device::Workshop(_) => false,
+                        };
+
+                        if can_process && !path.contains(to_device_id) {
+                            let mut new_path = path.clone();
+                            new_path.push(to_device_id.clone());
+                            queue.push_back(new_path);
+                            has_valid_downstream = true;
+                        }
+                    }
+                }
+
+                if !has_valid_downstream && path.len() > 1 {
+                    downstream_paths.push(path);
+                }
+            }
+
+            for downstream_path in &downstream_paths {
+                let full_path = downstream_path.clone();
+                let path_names: Vec<String> = full_path.iter()
+                    .filter_map(|id| canvas.devices.get(id).map(|d| d.name().to_string()))
+                    .collect();
+
+                let last_node_id = full_path.last().unwrap();
+                let last_device = canvas.devices.get(last_node_id);
+
+                let is_end = last_device.map_or(false, |d| d.is_end());
+                let is_component_at_assembly = last_device.map_or(false, |d| {
+                    if let Device::AssemblyStation(a) = d {
+                        let is_comp = if !a.components.is_empty() {
+                            a.components.contains(product_code)
+                        } else if !a.processable_products.is_empty() {
+                            a.processable_products.contains(product_code)
+                        } else {
+                            false
+                        };
+                        return is_comp;
+                    }
+                    false
+                });
+                let is_item_at_disassembly = last_device.map_or(false, |d| {
+                    if let Device::DisassemblyStation(ds) = d {
+                        return ds.items_to_disassemble.contains(product_code);
+                    }
+                    false
+                });
+
+                let is_complete = is_end || is_component_at_assembly || is_item_at_disassembly;
+
+                let end_node_id = if is_complete {
+                    Some(last_node_id.clone())
+                } else {
+                    None
+                };
+
+                let end_node_name = if let Some(ref id) = end_node_id {
+                    canvas.devices.get(id).map(|d| d.name().to_string())
+                } else {
+                    None
+                };
+
+                let step_materials: Vec<HashMap<String, f64>> = full_path.iter()
+                    .filter_map(|id| {
+                        if let Some(Device::Station(s)) = canvas.devices.get(id) {
+                            return Some(s.product_materials.get(product_code).cloned().unwrap_or_default());
+                        }
+                        None
+                    })
+                    .collect();
+
+                routes.push(ProductRoute {
+                    product_code: product_code.clone(),
+                    start_node_id: disassembly_id.clone(),
+                    start_node_name: disassembly_name.clone(),
+                    path: full_path,
+                    path_names,
+                    end_node_id,
+                    end_node_name,
+                    is_complete,
+                    step_materials,
+                    assembly_node_id: None,
+                    assembly_node_name: None,
+                    branch_paths: vec![],
+                    route_type: crate::models::RouteType::DisassemblyOutput,
+                });
+            }
+        }
+    }
+
     for (start_node_id, start_node_name, product_code) in &start_nodes_with_product {
+        let mut reaches_assembly_or_disassembly = false;
+        let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut queue: std::collections::VecDeque<String> = std::collections::VecDeque::new();
+        queue.push_back(start_node_id.clone());
+        
+        while let Some(node_id) = queue.pop_front() {
+            if visited.contains(&node_id) {
+                continue;
+            }
+            visited.insert(node_id.clone());
+            
+            for conn in canvas.connections.values() {
+                if conn.from_device_id == node_id {
+                    if let Some(Device::AssemblyStation(a)) = canvas.devices.get(&conn.to_device_id) {
+                        let is_component = if !a.components.is_empty() {
+                            a.components.contains(&product_code.to_string())
+                        } else if !a.processable_products.is_empty() {
+                            a.processable_products.contains(&product_code.to_string())
+                        } else {
+                            false
+                        };
+                        if is_component {
+                            reaches_assembly_or_disassembly = true;
+                            break;
+                        }
+                    }
+                    if let Some(Device::DisassemblyStation(d)) = canvas.devices.get(&conn.to_device_id) {
+                        if d.items_to_disassemble.contains(&product_code.to_string()) {
+                            reaches_assembly_or_disassembly = true;
+                            break;
+                        }
+                    }
+                    if !visited.contains(&conn.to_device_id) {
+                        queue.push_back(conn.to_device_id.clone());
+                    }
+                }
+            }
+            
+            if reaches_assembly_or_disassembly {
+                break;
+            }
+        }
+        
+        if reaches_assembly_or_disassembly {
+            continue;
+        }
+        
         let mut current_paths: Vec<Vec<String>> = vec![vec![start_node_id.clone()]];
         let mut completed_routes: Vec<Vec<String>> = Vec::new();
         
@@ -581,30 +1217,31 @@ pub fn get_product_routes(state: State<'_, AppState>) -> Result<ProductRouteChec
                                     true
                                 }
                             }
-                            Device::AssemblyStation(a) => {
-                                if !a.processable_products.is_empty() {
-                                    a.processable_products.contains(&product_code.to_string())
-                                } else {
-                                    true
-                                }
-                            }
+                            Device::AssemblyStation(_) => false,
+                            Device::DisassemblyStation(_) => false,
                             Device::EndNode(_) => true,
                             Device::Warehouse(w) => {
-                                if !w.product_code.is_empty() {
+                                if !w.processable_products.is_empty() {
+                                    w.processable_products.contains(&product_code.to_string())
+                                } else if !w.product_code.is_empty() {
                                     &w.product_code == product_code
                                 } else {
                                     true
                                 }
                             }
                             Device::TempStore(t) => {
-                                if !t.product_code.is_empty() {
+                                if !t.processable_products.is_empty() {
+                                    t.processable_products.contains(&product_code.to_string())
+                                } else if !t.product_code.is_empty() {
                                     &t.product_code == product_code
                                 } else {
                                     true
                                 }
                             }
                             Device::Buffer(b) => {
-                                if !b.product_code.is_empty() {
+                                if !b.processable_products.is_empty() {
+                                    b.processable_products.contains(&product_code.to_string())
+                                } else if !b.product_code.is_empty() {
                                     &b.product_code == product_code
                                 } else {
                                     true
@@ -686,6 +1323,7 @@ pub fn get_product_routes(state: State<'_, AppState>) -> Result<ProductRouteChec
                 assembly_node_id: None,
                 assembly_node_name: None,
                 branch_paths: Vec::new(),
+                route_type: crate::models::RouteType::Normal,
             });
         }
         
@@ -703,12 +1341,39 @@ pub fn get_product_routes(state: State<'_, AppState>) -> Result<ProductRouteChec
         }
     }
     
+    for (start_node_id, start_node_name, product_code) in &start_nodes_with_product {
+        let has_complete = routes.iter().any(|r| {
+            r.product_code == *product_code &&
+            r.start_node_id == *start_node_id &&
+            r.is_complete
+        });
+        
+        if !has_complete {
+            let already_in_list = incomplete_route_start_nodes.iter().any(|s| {
+                s.id == *start_node_id
+            });
+            if !already_in_list {
+                let product_name = canvas.products.get(product_code)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_default();
+                
+                incomplete_route_start_nodes.push(StartNodeInfo {
+                    id: start_node_id.clone(),
+                    name: start_node_name.clone(),
+                    product_code: Some(product_code.clone()),
+                    product_name: Some(product_name),
+                });
+            }
+        }
+    }
+    
     Ok(ProductRouteCheckResult {
         all_start_nodes_have_product,
         start_nodes_without_product,
         routes,
         incomplete_route_start_nodes,
         assembly_station_errors,
+        disassembly_station_errors,
     })
 }
 
@@ -717,123 +1382,90 @@ fn check_assembly_stations(canvas: &CanvasState) -> Vec<crate::models::AssemblyS
     
     for device in canvas.devices.values() {
         if let Device::AssemblyStation(assembly) = device {
-            if assembly.processable_products.is_empty() {
+            if assembly.components.is_empty() && assembly.processable_products.is_empty() {
                 errors.push(crate::models::AssemblyStationError {
                     id: assembly.base.id.clone(),
                     name: assembly.base.name.clone(),
-                    error_type: crate::models::AssemblyStationErrorType::NoProductSelected,
+                    error_type: crate::models::AssemblyStationErrorType::NoComponentSelected,
                     product_code: None,
                     product_name: None,
+                    component_code: None,
+                    component_name: None,
                     upstream_node_id: None,
                     upstream_node_name: None,
                 });
-            } else {
-                for product_code in &assembly.processable_products {
-                    let product_name = canvas.products.get(product_code)
+            }
+
+            if assembly.assembly_products.is_empty() && assembly.processable_products.is_empty() {
+                errors.push(crate::models::AssemblyStationError {
+                    id: assembly.base.id.clone(),
+                    name: assembly.base.name.clone(),
+                    error_type: crate::models::AssemblyStationErrorType::NoAssemblyProductSelected,
+                    product_code: None,
+                    product_name: None,
+                    component_code: None,
+                    component_name: None,
+                    upstream_node_id: None,
+                    upstream_node_name: None,
+                });
+            }
+
+            for product_code in &assembly.assembly_products {
+                let product_name = canvas.products.get(product_code)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_default();
+
+                let component_reqs = assembly.product_upstream_requirements.get(product_code);
+
+                if component_reqs.is_none() || component_reqs.unwrap().is_empty() {
+                    errors.push(crate::models::AssemblyStationError {
+                        id: assembly.base.id.clone(),
+                        name: assembly.base.name.clone(),
+                        error_type: crate::models::AssemblyStationErrorType::NoComponentForProduct,
+                        product_code: Some(product_code.clone()),
+                        product_name: Some(product_name.clone()),
+                        component_code: None,
+                        component_name: None,
+                        upstream_node_id: None,
+                        upstream_node_name: None,
+                    });
+                    continue;
+                }
+
+                let reqs = component_reqs.unwrap();
+
+                for (component_code, qty) in reqs {
+                    let component_name = canvas.products.get(component_code)
                         .map(|p| p.name.clone())
                         .unwrap_or_default();
-                    
-                    let incoming_connections: Vec<_> = canvas.connections
-                        .values()
-                        .filter(|c| c.to_device_id == assembly.base.id)
-                        .collect();
-                    
-                    let mut connected_upstream_nodes: std::collections::HashSet<String> = 
-                        std::collections::HashSet::new();
-                    
-                    for conn in &incoming_connections {
-                        if let Some(upstream_device) = canvas.devices.get(&conn.from_device_id) {
-                            let can_provide = match upstream_device {
-                                Device::StartNode(sn) => &sn.product_code == product_code,
-                                Device::Station(s) => {
-                                    if !s.processable_products.is_empty() {
-                                        s.processable_products.contains(&product_code.to_string())
-                                    } else if !s.product_code.is_empty() {
-                                        &s.product_code == product_code
-                                    } else {
-                                        true
-                                    }
-                                }
-                                Device::Warehouse(w) => {
-                                    if !w.product_code.is_empty() {
-                                        &w.product_code == product_code
-                                    } else {
-                                        true
-                                    }
-                                }
-                                Device::Buffer(b) => {
-                                    if !b.product_code.is_empty() {
-                                        &b.product_code == product_code
-                                    } else {
-                                        true
-                                    }
-                                }
-                                Device::TempStore(t) => {
-                                    if !t.product_code.is_empty() {
-                                        &t.product_code == product_code
-                                    } else {
-                                        true
-                                    }
-                                }
-                                _ => false,
-                            };
-                            
-                            if can_provide {
-                                connected_upstream_nodes.insert(conn.from_device_id.clone());
-                            }
-                        }
+
+                    if *qty == 0 {
+                        errors.push(crate::models::AssemblyStationError {
+                            id: assembly.base.id.clone(),
+                            name: assembly.base.name.clone(),
+                            error_type: crate::models::AssemblyStationErrorType::ComponentQuantityZero,
+                            product_code: Some(product_code.clone()),
+                            product_name: Some(product_name.clone()),
+                            component_code: Some(component_code.clone()),
+                            component_name: Some(component_name.clone()),
+                            upstream_node_id: None,
+                            upstream_node_name: None,
+                        });
                     }
-                    
-                    let upstream_reqs = assembly.product_upstream_requirements.get(product_code);
-                    
-                    if upstream_reqs.is_none() || upstream_reqs.unwrap().is_empty() {
-                        if !connected_upstream_nodes.is_empty() {
-                            for upstream_id in &connected_upstream_nodes {
-                                let upstream_name = canvas.devices.get(upstream_id)
-                                    .map(|d| d.name().to_string())
-                                    .unwrap_or_default();
-                                
-                                errors.push(crate::models::AssemblyStationError {
-                                    id: assembly.base.id.clone(),
-                                    name: assembly.base.name.clone(),
-                                    error_type: crate::models::AssemblyStationErrorType::UpstreamQuantityZero,
-                                    product_code: Some(product_code.clone()),
-                                    product_name: Some(product_name.clone()),
-                                    upstream_node_id: Some(upstream_id.clone()),
-                                    upstream_node_name: Some(upstream_name),
-                                });
-                            }
-                        } else {
-                            errors.push(crate::models::AssemblyStationError {
-                                id: assembly.base.id.clone(),
-                                name: assembly.base.name.clone(),
-                                error_type: crate::models::AssemblyStationErrorType::UpstreamQuantityZero,
-                                product_code: Some(product_code.clone()),
-                                product_name: Some(product_name.clone()),
-                                upstream_node_id: None,
-                                upstream_node_name: None,
-                            });
-                        }
-                    } else {
-                        for upstream_id in &connected_upstream_nodes {
-                            let required_qty = upstream_reqs.unwrap().get(upstream_id);
-                            
-                            if required_qty.is_none() || *required_qty.unwrap() == 0 {
-                                let upstream_name = canvas.devices.get(upstream_id)
-                                    .map(|d| d.name().to_string())
-                                    .unwrap_or_default();
-                                
-                                errors.push(crate::models::AssemblyStationError {
-                                    id: assembly.base.id.clone(),
-                                    name: assembly.base.name.clone(),
-                                    error_type: crate::models::AssemblyStationErrorType::UpstreamQuantityZero,
-                                    product_code: Some(product_code.clone()),
-                                    product_name: Some(product_name.clone()),
-                                    upstream_node_id: Some(upstream_id.clone()),
-                                    upstream_node_name: Some(upstream_name),
-                                });
-                            }
-                        }
+
+                    let component_reachable = self_reachable_from_start(canvas, &assembly.base.id, component_code);
+                    if !component_reachable {
+                        errors.push(crate::models::AssemblyStationError {
+                            id: assembly.base.id.clone(),
+                            name: assembly.base.name.clone(),
+                            error_type: crate::models::AssemblyStationErrorType::ComponentUnreachable,
+                            product_code: Some(product_code.clone()),
+                            product_name: Some(product_name.clone()),
+                            component_code: Some(component_code.clone()),
+                            component_name: Some(component_name.clone()),
+                            upstream_node_id: None,
+                            upstream_node_name: None,
+                        });
                     }
                 }
             }
@@ -841,6 +1473,226 @@ fn check_assembly_stations(canvas: &CanvasState) -> Vec<crate::models::AssemblyS
     }
     
     errors
+}
+
+fn self_reachable_from_start(canvas: &CanvasState, assembly_id: &str, component_code: &str) -> bool {
+    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut queue: std::collections::VecDeque<String> = std::collections::VecDeque::new();
+    queue.push_back(assembly_id.to_string());
+
+    while let Some(node_id) = queue.pop_front() {
+        if visited.contains(&node_id) {
+            continue;
+        }
+        visited.insert(node_id.clone());
+
+        for conn in canvas.connections.values() {
+            if conn.to_device_id == node_id {
+                let from_device = match canvas.devices.get(&conn.from_device_id) {
+                    Some(d) => d,
+                    None => continue,
+                };
+
+                match from_device {
+                    Device::StartNode(sn) => {
+                        if sn.product_code == component_code {
+                            return true;
+                        }
+                    }
+                    Device::Station(s) => {
+                        if s.processable_products.contains(&component_code.to_string())
+                            || s.product_code == component_code
+                            || s.processable_products.is_empty() {
+                            queue.push_back(conn.from_device_id.clone());
+                        }
+                    }
+                    Device::Warehouse(_) | Device::Buffer(_) | Device::TempStore(_) => {
+                        queue.push_back(conn.from_device_id.clone());
+                    }
+                    Device::AssemblyStation(_) => {
+                        queue.push_back(conn.from_device_id.clone());
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    false
+}
+
+fn check_disassembly_stations(canvas: &CanvasState) -> Vec<crate::models::DisassemblyStationError> {
+    let mut errors: Vec<crate::models::DisassemblyStationError> = Vec::new();
+
+    let all_assembly_products: std::collections::HashSet<String> = canvas.devices
+        .values()
+        .filter_map(|d| {
+            if let Device::AssemblyStation(a) = d {
+                Some(a.assembly_products.clone())
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .collect();
+
+    for device in canvas.devices.values() {
+        if let Device::DisassemblyStation(disassembly) = device {
+            if disassembly.items_to_disassemble.is_empty() {
+                errors.push(crate::models::DisassemblyStationError {
+                    id: disassembly.base.id.clone(),
+                    name: disassembly.base.name.clone(),
+                    error_type: crate::models::DisassemblyStationErrorType::NoItemToDisassemble,
+                    product_code: None,
+                    product_name: None,
+                    disassembly_product_code: None,
+                    disassembly_product_name: None,
+                });
+            }
+
+            if disassembly.disassembly_products.is_empty() {
+                errors.push(crate::models::DisassemblyStationError {
+                    id: disassembly.base.id.clone(),
+                    name: disassembly.base.name.clone(),
+                    error_type: crate::models::DisassemblyStationErrorType::NoDisassemblyProduct,
+                    product_code: None,
+                    product_name: None,
+                    disassembly_product_code: None,
+                    disassembly_product_name: None,
+                });
+            }
+
+            for item_code in &disassembly.items_to_disassemble {
+                let item_name = canvas.products.get(item_code)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_default();
+
+                if all_assembly_products.contains(item_code) {
+                    errors.push(crate::models::DisassemblyStationError {
+                        id: disassembly.base.id.clone(),
+                        name: disassembly.base.name.clone(),
+                        error_type: crate::models::DisassemblyStationErrorType::AssemblyProductAsItem,
+                        product_code: Some(item_code.clone()),
+                        product_name: Some(item_name.clone()),
+                        disassembly_product_code: None,
+                        disassembly_product_name: None,
+                    });
+                }
+
+                let product_reqs = disassembly.product_disassembly_requirements.get(item_code);
+                if product_reqs.is_none() || product_reqs.unwrap().is_empty() {
+                    errors.push(crate::models::DisassemblyStationError {
+                        id: disassembly.base.id.clone(),
+                        name: disassembly.base.name.clone(),
+                        error_type: crate::models::DisassemblyStationErrorType::NoProductForItem,
+                        product_code: Some(item_code.clone()),
+                        product_name: Some(item_name.clone()),
+                        disassembly_product_code: None,
+                        disassembly_product_name: None,
+                    });
+                    continue;
+                }
+
+                let reqs = product_reqs.unwrap();
+                let mut has_nonzero = false;
+                for (dp_code, qty) in reqs {
+                    let dp_name = canvas.products.get(dp_code)
+                        .map(|p| p.name.clone())
+                        .unwrap_or_default();
+
+                    if *qty == 0 {
+                        errors.push(crate::models::DisassemblyStationError {
+                            id: disassembly.base.id.clone(),
+                            name: disassembly.base.name.clone(),
+                            error_type: crate::models::DisassemblyStationErrorType::DisassemblyProductQuantityZero,
+                            product_code: Some(item_code.clone()),
+                            product_name: Some(item_name.clone()),
+                            disassembly_product_code: Some(dp_code.clone()),
+                            disassembly_product_name: Some(dp_name),
+                        });
+                    } else {
+                        has_nonzero = true;
+                    }
+                }
+
+                if !has_nonzero {
+                    errors.push(crate::models::DisassemblyStationError {
+                        id: disassembly.base.id.clone(),
+                        name: disassembly.base.name.clone(),
+                        error_type: crate::models::DisassemblyStationErrorType::NoProductForItem,
+                        product_code: Some(item_code.clone()),
+                        product_name: Some(item_name.clone()),
+                        disassembly_product_code: None,
+                        disassembly_product_name: None,
+                    });
+                }
+
+                let item_reachable = item_reachable_from_start(canvas, &disassembly.base.id, item_code);
+                if !item_reachable {
+                    errors.push(crate::models::DisassemblyStationError {
+                        id: disassembly.base.id.clone(),
+                        name: disassembly.base.name.clone(),
+                        error_type: crate::models::DisassemblyStationErrorType::ItemUnreachable,
+                        product_code: Some(item_code.clone()),
+                        product_name: Some(item_name),
+                        disassembly_product_code: None,
+                        disassembly_product_name: None,
+                    });
+                }
+            }
+        }
+    }
+
+    errors
+}
+
+fn item_reachable_from_start(canvas: &CanvasState, disassembly_id: &str, item_code: &str) -> bool {
+    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut queue: std::collections::VecDeque<String> = std::collections::VecDeque::new();
+    queue.push_back(disassembly_id.to_string());
+
+    while let Some(node_id) = queue.pop_front() {
+        if visited.contains(&node_id) {
+            continue;
+        }
+        visited.insert(node_id.clone());
+
+        for conn in canvas.connections.values() {
+            if conn.to_device_id == node_id {
+                let from_device = match canvas.devices.get(&conn.from_device_id) {
+                    Some(d) => d,
+                    None => continue,
+                };
+
+                match from_device {
+                    Device::StartNode(sn) => {
+                        if sn.product_code == item_code {
+                            return true;
+                        }
+                    }
+                    Device::Station(s) => {
+                        if s.processable_products.contains(&item_code.to_string())
+                            || s.product_code == item_code
+                            || s.processable_products.is_empty() {
+                            queue.push_back(conn.from_device_id.clone());
+                        }
+                    }
+                    Device::Warehouse(_) | Device::Buffer(_) | Device::TempStore(_) => {
+                        queue.push_back(conn.from_device_id.clone());
+                    }
+                    Device::DisassemblyStation(ds) => {
+                        if ds.disassembly_products.contains(&item_code.to_string()) {
+                            return true;
+                        }
+                        queue.push_back(conn.from_device_id.clone());
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    false
 }
 
 #[tauri::command]

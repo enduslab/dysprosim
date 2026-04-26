@@ -1,4 +1,4 @@
-export type ShapeType = 'rect' | 'circle' | 'ellipse' | 'diamond' | 'tri' | 'trap';
+export type ShapeType = 'rect' | 'circle' | 'ellipse' | 'diamond' | 'tri' | 'trap' | 'inverted_trap';
 
 export type FeedMode = 'idle' | 'paced';
 
@@ -90,7 +90,9 @@ export interface Station extends DeviceBase {
 
 export interface AssemblyStation extends DeviceBase {
   type: 'AssemblyStation';
-  processable_products: string[];
+  processable_products?: string[];
+  components?: string[];
+  assembly_products?: string[];
   dist_type: DistributionType;
   avg_time_s: number | null;
   stddev_s: number | null;
@@ -103,6 +105,24 @@ export interface AssemblyStation extends DeviceBase {
   product_process_times: Record<string, ProductProcessTime>;
   product_tools: Record<string, Record<string, number>>;
   product_upstream_requirements: Record<string, Record<string, number>>;
+}
+
+export interface DisassemblyStation extends DeviceBase {
+  type: 'DisassemblyStation';
+  items_to_disassemble: string[];
+  disassembly_products: string[];
+  dist_type: DistributionType;
+  avg_time_s: number | null;
+  stddev_s: number | null;
+  min_time_s: number | null;
+  max_time_s: number | null;
+  mode_time_s: number | null;
+  uniform_min_s: number | null;
+  uniform_max_s: number | null;
+  exp_mean_s: number | null;
+  product_process_times: Record<string, ProductProcessTime>;
+  product_tools: Record<string, Record<string, number>>;
+  product_disassembly_requirements: Record<string, Record<string, number>>;
 }
 
 export interface Warehouse extends DeviceBase {
@@ -143,7 +163,7 @@ export interface Workshop extends DeviceBase {
   height_mm: number;
 }
 
-export type Device = StartNode | EndNode | Station | AssemblyStation | Warehouse | TempStore | Buffer | Workshop;
+export type Device = StartNode | EndNode | Station | AssemblyStation | DisassemblyStation | Warehouse | TempStore | Buffer | Workshop;
 
 export interface Connection {
   id: string;
@@ -317,6 +337,7 @@ export interface ProcessingRecord {
   arrive_time_s: number;
   leave_time_s: number | null;
   task_type?: string;
+  disassembly_product_ids?: string[];
 }
 
 export interface TransportRecord {
@@ -476,6 +497,8 @@ export interface BranchPath {
   required_quantity: number;
 }
 
+export type RouteType = 'Normal' | 'ComponentToAssembly' | 'AssemblyToEnd' | 'InputToDisassembly' | 'DisassemblyOutput';
+
 export interface ProductRoute {
   product_code: string;
   start_node_id: string;
@@ -489,6 +512,7 @@ export interface ProductRoute {
   assembly_node_id?: string;
   assembly_node_name?: string;
   branch_paths?: BranchPath[];
+  route_type?: RouteType;
 }
 
 export interface StartNodeInfo {
@@ -504,14 +528,27 @@ export interface ProductRouteCheckResult {
   routes: ProductRoute[];
   incomplete_route_start_nodes: StartNodeInfo[];
   assembly_station_errors?: AssemblyStationError[];
+  disassembly_station_errors?: DisassemblyStationError[];
 }
 
 export interface AssemblyStationError {
   id: string;
   name: string;
-  error_type: 'NoProductSelected' | 'UpstreamQuantityZero';
+  error_type: 'NoProductSelected' | 'NoComponentSelected' | 'NoAssemblyProductSelected' | 'UpstreamQuantityZero' | 'ComponentQuantityZero' | 'NoComponentForProduct' | 'ComponentUnreachable';
   product_code?: string;
   product_name?: string;
+  component_code?: string;
+  component_name?: string;
   upstream_node_id?: string;
   upstream_node_name?: string;
+}
+
+export interface DisassemblyStationError {
+  id: string;
+  name: string;
+  error_type: 'NoItemToDisassemble' | 'NoDisassemblyProduct' | 'NoProductForItem' | 'DisassemblyProductQuantityZero' | 'ItemUnreachable' | 'AssemblyProductAsItem';
+  product_code?: string;
+  product_name?: string;
+  disassembly_product_code?: string;
+  disassembly_product_name?: string;
 }

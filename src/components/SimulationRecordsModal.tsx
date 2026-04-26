@@ -1534,7 +1534,8 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
             <tr><th style="padding:4px 8px;border:1px solid #ddd;background:#f0f4ff;">过程产品ID</th><th style="padding:4px 8px;border:1px solid #ddd;background:#f0f4ff;">产品</th><th style="padding:4px 8px;border:1px solid #ddd;background:#f0f4ff;">序号</th><th style="padding:4px 8px;border:1px solid #ddd;background:#f0f4ff;">任务类型</th><th style="padding:4px 8px;border:1px solid #ddd;background:#f0f4ff;">到达时间</th><th style="padding:4px 8px;border:1px solid #ddd;background:#f0f4ff;">开始时间</th><th style="padding:4px 8px;border:1px solid #ddd;background:#f0f4ff;">结束时间</th><th style="padding:4px 8px;border:1px solid #ddd;background:#f0f4ff;">用时</th></tr>
             ${processingRecords.map(record => {
               const taskType = record.task_type || '加工任务';
-              return `<tr><td style="padding:4px 8px;border:1px solid #ddd;word-break:break-all;max-width:100px;">${record.process_product_id}</td><td style="padding:4px 8px;border:1px solid #ddd;">${record.product_code}</td><td style="padding:4px 8px;border:1px solid #ddd;">${record.sequence_number}</td><td style="padding:4px 8px;border:1px solid #ddd;${taskType === '工具切换' ? 'color:#F97316;font-weight:500;' : ''}">${taskType}</td><td style="padding:4px 8px;border:1px solid #ddd;">${formatTimePdf(record.arrive_time_s)}</td><td style="padding:4px 8px;border:1px solid #ddd;">${formatTimePdf(record.start_time_s)}</td><td style="padding:4px 8px;border:1px solid #ddd;">${formatTimePdf(record.end_time_s)}</td><td style="padding:4px 8px;border:1px solid #ddd;">${record.duration_s.toFixed(2)}s</td></tr>`;
+              const ppIdDisplay = record.task_type === '拆解任务' && record.disassembly_product_ids && record.disassembly_product_ids.length > 0 ? record.disassembly_product_ids.join(', ') : record.process_product_id;
+              return `<tr><td style="padding:4px 8px;border:1px solid #ddd;word-break:break-all;max-width:100px;">${ppIdDisplay}</td><td style="padding:4px 8px;border:1px solid #ddd;">${record.product_code}</td><td style="padding:4px 8px;border:1px solid #ddd;">${record.sequence_number}</td><td style="padding:4px 8px;border:1px solid #ddd;${taskType === '工具切换' ? 'color:#F97316;font-weight:500;' : ''}">${taskType}</td><td style="padding:4px 8px;border:1px solid #ddd;">${formatTimePdf(record.arrive_time_s)}</td><td style="padding:4px 8px;border:1px solid #ddd;">${formatTimePdf(record.start_time_s)}</td><td style="padding:4px 8px;border:1px solid #ddd;">${formatTimePdf(record.end_time_s)}</td><td style="padding:4px 8px;border:1px solid #ddd;">${record.duration_s.toFixed(2)}s</td></tr>`;
             }).join('')}
           </table>`;
         }
@@ -2412,7 +2413,11 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
                           <tbody>
                             {selectedRecord.results.processing_records[deviceId].map((record, idx) => (
                               <tr key={idx}>
-                                <td style={{ fontSize: '11px' }}>{record.process_product_id}</td>
+                                <td style={{ fontSize: '11px' }}>
+                                  {record.task_type === '拆解任务' && record.disassembly_product_ids && record.disassembly_product_ids.length > 0
+                                    ? record.disassembly_product_ids.join(', ')
+                                    : record.process_product_id}
+                                </td>
                                 <td>{record.product_code}</td>
                                 <td>{record.sequence_number}</td>
                                 <td style={{ 

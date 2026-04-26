@@ -322,6 +322,46 @@ export default function ProductRoutesModal({ onClose }: ProductRoutesModalProps)
             </div>
           )}
 
+          {productRoutes.disassembly_station_errors && productRoutes.disassembly_station_errors.length > 0 && (
+            <div style={{ 
+              padding: '12px', 
+              background: '#FEF2F2', 
+              borderRadius: '8px', 
+              marginBottom: '16px',
+              border: '1px solid #FECACA'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <svg width="20" height="20" viewBox="0 0 20 20" style={{ flexShrink: 0 }}>
+                  <polygon points="10,2 18,17 2,17" fill="#EF4444" stroke="white" strokeWidth="2" />
+                  <text x="10" y="14" textAnchor="middle" fill="white" fontSize="11" fontWeight="bold">!</text>
+                </svg>
+                <strong style={{ color: '#DC2626' }}>错误：</strong>
+                <span style={{ color: '#DC2626' }}>拆解站配置问题</span>
+              </div>
+              <ul style={{ margin: '0 0 0 28px', paddingLeft: '0', color: '#DC2626' }}>
+                {productRoutes.disassembly_station_errors.map((error, idx) => (
+                  <li key={idx} style={{ marginBottom: '4px' }}>
+                    {error.error_type === 'NoItemToDisassemble' ? (
+                      <><strong>{error.name}</strong> 未选择任何待拆解品</>
+                    ) : error.error_type === 'NoDisassemblyProduct' ? (
+                      <><strong>{error.name}</strong> 未选择任何拆解产物</>
+                    ) : error.error_type === 'NoProductForItem' ? (
+                      <><strong>{error.name}</strong> 的待拆解品 <strong>{error.product_name || error.product_code}</strong> 未设置拆解产物数量</>
+                    ) : error.error_type === 'DisassemblyProductQuantityZero' ? (
+                      <><strong>{error.name}</strong> 的待拆解品 <strong>{error.product_name || error.product_code}</strong> 的拆解产物 <strong>{error.disassembly_product_name || error.disassembly_product_code}</strong> 产出数量为 0</>
+                    ) : error.error_type === 'ItemUnreachable' ? (
+                      <><strong>{error.name}</strong> 的待拆解品 <strong>{error.product_name || error.product_code}</strong> 无法从起点或上游拆解站获取</>
+                    ) : error.error_type === 'AssemblyProductAsItem' ? (
+                      <><strong>{error.name}</strong> 的待拆解品 <strong>{error.product_name || error.product_code}</strong> 是装配成品，不能作为待拆解品</>
+                    ) : (
+                      <><strong>{error.name}</strong> 存在配置问题</>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {Object.keys(routesByProduct).length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
               暂无工艺路线数据，请确保起点已选择产品并连接到下游设备
@@ -383,6 +423,18 @@ export default function ProductRoutesModal({ onClose }: ProductRoutesModalProps)
                           }}>
                             <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                               路线 {index + 1}
+                              {route.route_type === 'ComponentToAssembly' && (
+                                <span style={{ marginLeft: '6px', fontSize: '10px', padding: '1px 6px', borderRadius: '3px', background: 'var(--info-bg)', color: 'var(--info-text)' }}>组件→装配站</span>
+                              )}
+                              {route.route_type === 'AssemblyToEnd' && (
+                                <span style={{ marginLeft: '6px', fontSize: '10px', padding: '1px 6px', borderRadius: '3px', background: 'var(--info-bg)', color: 'var(--info-text)' }}>装配站→终点</span>
+                              )}
+                              {route.route_type === 'InputToDisassembly' && (
+                                <span style={{ marginLeft: '6px', fontSize: '10px', padding: '1px 6px', borderRadius: '3px', background: '#FFF3E0', color: '#E65100' }}>待拆解品→拆解站</span>
+                              )}
+                              {route.route_type === 'DisassemblyOutput' && (
+                                <span style={{ marginLeft: '6px', fontSize: '10px', padding: '1px 6px', borderRadius: '3px', background: '#FFF3E0', color: '#E65100' }}>拆解站→下游</span>
+                              )}
                             </span>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               {hasMaterials && (
