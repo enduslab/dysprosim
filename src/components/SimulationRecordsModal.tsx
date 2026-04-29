@@ -1197,6 +1197,7 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
 
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
+  const [exportingMd, setExportingMd] = useState(false);
 
   const handleExportPdf = async () => {
     if (!selectedRecord) return;
@@ -1953,6 +1954,299 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
     }
   };
 
+  const handleExportMd = async () => {
+    if (!selectedRecord) return;
+    setExportingMd(true);
+    try {
+      const results = selectedRecord.results;
+
+      const formatTime = (seconds: number): string => {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = Math.floor(seconds % 60);
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      };
+
+      const priorityLabels: Record<string, string> = {
+        nearest_distance: '距离最近',
+        farthest_distance: '距离最远',
+        lowest_utilization: '利用率最低',
+        highest_utilization: '利用率最高',
+        product_concentrated: '按产品集中',
+        product_dispersed: '按产品分散',
+        least_waiting_entry: '等待入库最少',
+      };
+
+      let md = '# 模拟运行统计报告\n\n';
+      md += `> 记录时间: ${new Date(selectedRecord.timestamp).toLocaleString()}\n\n`;
+
+      md += '## 总体统计\n\n';
+      md += '| 指标 | 数值 |\n';
+      md += '|------|------|\n';
+      md += `| 模拟时长 | ${formatTime(results.duration_s)} |\n`;
+      md += `| 完成产品 | ${results.completed_products} 件 |\n`;
+      md += `| 整体最大在制品数 | ${results.max_total_wip || 0} 件 |\n`;
+      md += `| 模拟模式 | ${results.simulation_mode === 'fixed_output' ? '固定产量' : '固定时长'} |\n`;
+      md += `| 资源选择规则 | ${results.resource_selection_rule === 'min_wip_dynamic' ? '动态平衡(在制品)' : results.resource_selection_rule === 'min_utilrate_dynamic' ? '动态平衡(利用率)' : '基础规则'} |\n`;
+      md += `| 多仓库选择优先级 | ${(results.warehouse_selection_priorities || []).map((p: string, i: number) => `${i + 1}:${priorityLabels[p] || p}`).join(' → ')} |\n`;
+      md += '\n';
+
+      const productCounts = results.completed_products_by_code || {};
+      if (Object.keys(productCounts).length > 0) {
+        md += '### 完成产品数（按产品种类）\n\n';
+        md += '| 产品 | 数量 |\n';
+        md += '|------|------|\n';
+        for (const [code, count] of Object.entries(productCounts)) {
+          const name = canvas.products?.[code]?.name || code;
+          md += `| ${name} | ${count} |\n`;
+        }
+        md += '\n';
+      }
+
+      if (results.product_avg_process_times && results.product_avg_process_times.length > 0) {
+        md += '### 产品平均处理时长\n\n';
+        md += '| 产品 | 加工次数 | 平均处理时长(秒) |\n';
+        md += '|------|----------|------------------|\n';
+        for (const stat of results.product_avg_process_times) {
+          md += `| ${stat.product_name || stat.product_code} | ${stat.count} | ${stat.avg_process_time_s.toFixed(2)} |\n`;
+        }
+        md += '\n';
+      }
+
+      if (results.material_consumption && Object.keys(results.material_consumption).length > 0) {
+        md += '### 原料消耗量\n\n';
+        md += '| 原料 | 消耗量 |\n';
+        md += '|------|--------|\n';
+        for (const [code, qty] of Object.entries(results.material_consumption)) {
+          const material = canvas.materials?.[code];
+          const unit = material?.unit || '';
+          md += `| ${material?.name || code} | ${qty.toFixed(2)}${unit} |\n`;
+        }
+        md += '\n';
+      }
+
+      const productMaterialData = computeProductMaterialConsumption(results, canvas.products || {}, canvas.materials || {});
+      if (productMaterialData.length > 0) {
+        const allMats = [...new Set(productMaterialData.flatMap(p => p.materials.map(m => m.code)))];
+        if (allMats.length > 0) {
+          md += '### 按产品各类原料总消耗量\n\n';
+          md += '| 产品 | 原料 | 计量单位 | 消耗数量 |\n';
+          md += '|------|------|----------|----------|\n';
+          for (const p of productMaterialData) {
+            for (let mIdx = 0; mIdx < p.materials.length; mIdx++) {
+              const m = p.materials[mIdx];
+              md += `| ${mIdx === 0 ? p.productName : ''} | ${m.name} | ${m.unit || '-'} | ${m.quantity.toFixed(2)}${m.unit || ''} |\n`;
+            }
+          }
+          md += '\n';
+        }
+      }
+
+      md += '## 设备统计\n\n';
+      for (const stat of results.device_stats) {
+        const device = canvas.devices[stat.device_id];
+        const deviceType = device?.type || '';
+        md += `### ${stat.device_name} (${deviceType})\n\n`;
+        md += '| 指标 | 数值 |\n';
+        md += '|------|------|\n';
+        md += `| 完成加工数 | ${stat.completed} 件 |\n`;
+        md += `| 利用率 | ${stat.utilization.toFixed(1)}% |\n`;
+        md += `| 最大在制品数 | ${stat.max_wip} 件 |\n`;
+        md += `| 平均加工时长 | ${stat.avg_proc_time_s.toFixed(2)}s |\n`;
+        md += '\n';
+
+        if (stat.by_product && Object.keys(stat.by_product).length > 0) {
+          md += '| 产品 | 加工数 | 平均时长(秒) |\n';
+          md += '|------|--------|---------------|\n';
+          for (const [code, data] of Object.entries(stat.by_product)) {
+            md += `| ${data.product_name || code} | ${data.count} | ${data.avg_time_s.toFixed(2)} |\n`;
+          }
+          md += '\n';
+        }
+
+        const devMatConsumption = results.device_material_consumption?.[stat.device_id] || {};
+        if (Object.keys(devMatConsumption).length > 0) {
+          md += '**原材料消耗:**\n\n';
+          md += '| 原材料 | 消耗量 |\n';
+          md += '|--------|--------|\n';
+          for (const [mCode, amount] of Object.entries(devMatConsumption)) {
+            const name = canvas.materials?.[mCode]?.name || mCode;
+            md += `| ${name} | ${amount.toFixed(2)} |\n`;
+          }
+          md += '\n';
+        }
+      }
+
+      if (results.connection_stats && results.connection_stats.length > 0) {
+        md += '## 运输线路统计\n\n';
+        md += '| 线路 | 起始设备 | 目标设备 | 运输次数 | 利用率 |\n';
+        md += '|------|----------|----------|----------|--------|\n';
+        for (const stat of results.connection_stats) {
+          md += `| ${stat.connection_name} | ${stat.from_device} | ${stat.to_device} | ${stat.transport_count} | ${stat.utilization.toFixed(1)}% |\n`;
+        }
+        md += '\n';
+      }
+
+      if (results.storage_stats && results.storage_stats.length > 0) {
+        md += '## 存储统计\n\n';
+        for (const stat of results.storage_stats) {
+          md += `### ${stat.device_name}\n\n`;
+          md += '| 指标 | 数值 |\n';
+          md += '|------|------|\n';
+          md += `| 最大容量 | ${stat.capacity} |\n`;
+          md += `| 最终暂存量 | ${stat.stock} |\n`;
+          md += `| 最大暂存量 | ${stat.max_stock ?? stat.stock} |\n`;
+          md += `| 最大等待入库数 | ${stat.max_waiting_entry ?? 0} |\n`;
+          md += `| 最大利用率 | ${stat.capacity > 0 ? ((stat.max_stock ?? stat.stock) / stat.capacity * 100).toFixed(1) + '%' : '-'} |\n`;
+          md += '\n';
+
+          if (stat.by_product && Object.keys(stat.by_product).length > 0) {
+            md += '| 产品 | 数量 |\n';
+            md += '|------|------|\n';
+            for (const [pCode, count] of Object.entries(stat.by_product)) {
+              const pName = canvas.products?.[pCode]?.name || pCode;
+              md += `| ${pName} | ${count} |\n`;
+            }
+            md += '\n';
+          }
+        }
+      }
+
+      {
+        const ganttSegments: {
+          deviceName: string;
+          productCode: string;
+          productName: string;
+          startTime: number;
+          endTime: number;
+          count: number;
+          taskType: string;
+        }[] = [];
+
+        Object.entries(results.processing_records).forEach(([deviceId, records]) => {
+          const device = canvas.devices[deviceId];
+          if (!device) return;
+          const deviceType = device.type;
+          const isProcessingDevice = !['StartNode', 'EndNode', 'Warehouse', 'Buffer', 'TempStore'].includes(deviceType);
+          if (!isProcessingDevice || records.length === 0) return;
+
+          const sortedRecords = [...records]
+            .filter(r => r.end_time_s > 0)
+            .sort((a, b) => a.start_time_s - b.start_time_s);
+          if (sortedRecords.length === 0) return;
+
+          interface Segment {
+            productCode: string;
+            productName: string;
+            startTime: number;
+            endTime: number;
+            count: number;
+            taskType: string;
+          }
+
+          const segments: Segment[] = [];
+
+          sortedRecords.forEach(record => {
+            const code = record.product_code;
+            const product = canvas.products?.[code];
+            const productName = product?.name || code;
+            const isToolSwitch = record.task_type === '工具切换';
+
+            if (isToolSwitch) {
+              segments.push({
+                productCode: code,
+                productName: `${productName} (工具切换)`,
+                startTime: record.start_time_s,
+                endTime: record.end_time_s,
+                count: 1,
+                taskType: '工具切换'
+              });
+            } else {
+              const lastSegment = segments.length > 0 ? segments[segments.length - 1] : null;
+              if (lastSegment === null) {
+                segments.push({
+                  productCode: code,
+                  productName,
+                  startTime: record.start_time_s,
+                  endTime: record.end_time_s,
+                  count: 1,
+                  taskType: '加工任务'
+                });
+              } else if (lastSegment.productCode !== code || lastSegment.taskType === '工具切换') {
+                segments.push({
+                  productCode: code,
+                  productName,
+                  startTime: record.start_time_s,
+                  endTime: record.end_time_s,
+                  count: 1,
+                  taskType: '加工任务'
+                });
+              } else {
+                const gap = record.start_time_s - lastSegment.endTime;
+                if (gap < 1) {
+                  lastSegment.endTime = record.end_time_s;
+                  lastSegment.count += 1;
+                } else {
+                  segments.push({
+                    productCode: code,
+                    productName,
+                    startTime: record.start_time_s,
+                    endTime: record.end_time_s,
+                    count: 1,
+                    taskType: '加工任务'
+                  });
+                }
+              }
+            }
+          });
+
+          segments.forEach(segment => {
+            ganttSegments.push({
+              deviceName: device.name || deviceId,
+              productCode: segment.productCode,
+              productName: segment.productName,
+              startTime: segment.startTime,
+              endTime: segment.endTime,
+              count: segment.count,
+              taskType: segment.taskType
+            });
+          });
+        });
+
+        ganttSegments.sort((a, b) => {
+          const nameCmp = a.deviceName.localeCompare(b.deviceName, 'zh-CN');
+          if (nameCmp !== 0) return nameCmp;
+          return a.startTime - b.startTime;
+        });
+
+        if (ganttSegments.length > 0) {
+          md += '## 甘特图数据（设备加工时间线）\n\n';
+          md += '| 节点名称 | 产品 | 任务类型 | 开始时间 | 结束时间 | 完成产品个数 |\n';
+          md += '|----------|------|----------|----------|----------|---------------|\n';
+          for (const seg of ganttSegments) {
+            md += `| ${seg.deviceName} | ${seg.productName} | ${seg.taskType} | ${formatTime(seg.startTime)} | ${formatTime(seg.endTime)} | ${seg.count} |\n`;
+          }
+          md += '\n';
+        }
+      }
+
+      const mdPath = await save({
+        defaultPath: `模拟统计_${selectedRecord.timestamp.replace(/[:\s]/g, '-')}.md`,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      });
+
+      if (mdPath) {
+        await writeTextFile(mdPath, md, { append: false });
+        alert('MD导出成功');
+      }
+    } catch (error) {
+      console.error('MD export failed:', error);
+      alert('MD导出失败: ' + error);
+    } finally {
+      setExportingMd(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!selectedRecordId) return;
     
@@ -2152,6 +2446,21 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
               }}
             >
               {exportingExcel ? '导出中...' : '导出Excel'}
+            </button>
+            <button
+              onClick={handleExportMd}
+              disabled={!selectedRecord || exportingMd}
+              style={{
+                padding: '4px 12px',
+                fontSize: '12px',
+                background: selectedRecord && !exportingMd ? '#6366F1' : 'var(--border-light)',
+                color: selectedRecord && !exportingMd ? 'white' : 'var(--text-muted)',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: selectedRecord && !exportingMd ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {exportingMd ? '导出中...' : '导出MD'}
             </button>
             <button className="modal-close" onClick={onClose}>×</button>
           </div>
