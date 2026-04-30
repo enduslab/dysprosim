@@ -181,7 +181,7 @@
 <body>
     <div class="header">
         <h1>DysProSim 操作手册</h1>
-        <div class="version">版本：v1.1.0</div>
+        <div class="version">版本：v1.2.0</div>
     </div>
     
     <div class="container">
@@ -198,8 +198,9 @@
                 <li><a href="#section8">8. 连线创建与配置</a></li>
                 <li><a href="#section9">9. 模拟运行</a></li>
                 <li><a href="#section10">10. 统计分析</a></li>
-                <li><a href="#section11">11. 文件操作</a></li>
-                <li><a href="#section12">12. 快捷键参考</a></li>
+                <li><a href="#section11">11. AI 分析</a></li>
+                <li><a href="#section12">12. 文件操作</a></li>
+                <li><a href="#section13">13. 快捷键参考</a></li>
             </ul>
         </div>
         
@@ -1366,9 +1367,92 @@
                 <li>不同产品的加工记录始终显示为独立的色块</li>
             </ul>
             
-            <h2 id="section11">11. 文件操作</h2>
+            <h2 id="section11">11. AI 分析</h2>
             
-            <h3>11.1 保存布局</h3>
+            <p>AI 分析功能利用大语言模型对模拟运行结果进行智能分析和对比，帮助用户快速发现生产瓶颈、识别潜在问题并获得优化建议。</p>
+            
+            <h3>11.1 打开 AI 分析</h3>
+            <ol>
+                <li>在模拟控制面板中，点击 <strong>「AI」</strong> 按钮</li>
+                <li>弹出 AI 分析窗口</li>
+                <li>如果尚未保存任何模拟记录，该按钮为灰色不可点击状态，需先运行模拟并保存记录</li>
+            </ol>
+            
+            <div class="note">
+                <strong>注意：</strong>AI 分析窗口支持拖动，可拖动标题栏移动窗口位置。
+            </div>
+            
+            <h3>11.2 选择分析记录</h3>
+            <p>在 AI 分析窗口的「选择分析」标签页中：</p>
+            <ol>
+                <li>勾选需要分析的模拟记录（最多选择 <strong>3 条</strong>）</li>
+                <li>选择 1 条记录时，进行<strong>单次分析</strong>，AI 将分析该次模拟的总体情况和可能存在的问题</li>
+                <li>选择多条记录时，进行<strong>对比分析</strong>，AI 将对比多次模拟的差异和问题</li>
+                <li>点击 <strong>「提交分析」</strong> 按钮开始分析</li>
+            </ol>
+            
+            <div class="note">
+                <strong>注意：</strong>只能分析同一布局下的模拟记录。分析过程中需等待，期间无法操作软件。
+            </div>
+            
+            <h3>11.3 查看分析结果</h3>
+            <p>分析完成后自动切换到「分析结果」标签页：</p>
+            <ul>
+                <li>分析结果以 <strong>Markdown 格式</strong> 渲染显示，包含标题、表格、列表等</li>
+                <li>结果内容可上下滚动查看</li>
+                <li>点击 <strong>「复制」</strong> 按钮可将分析结果复制到剪贴板</li>
+                <li>点击 <strong>「导出MD」</strong> 按钮可将分析结果保存为 Markdown 文件</li>
+            </ul>
+            
+            <h3>11.4 分析失败与重试</h3>
+            <p>如果分析过程中出现错误（如网络连接失败、AI 服务不可用等）：</p>
+            <ul>
+                <li>窗口底部会显示错误提示和简要的失败原因</li>
+                <li>点击 <strong>「重试」</strong> 按钮可重新提交分析</li>
+            </ul>
+            
+            <p>常见失败原因：</p>
+            <table>
+                <tr><th>错误信息</th><th>可能原因</th></tr>
+                <tr><td>连接失败</td><td>网络不通或 AI 服务未启动</td></tr>
+                <tr><td>AI服务返回错误 (HTTP 401)</td><td>API Key 无效或未配置</td></tr>
+                <tr><td>AI服务返回错误 (HTTP 404)</td><td>API 地址配置错误</td></tr>
+                <tr><td>请求AI服务失败 (超时)</td><td>网络延迟过高或模型响应过慢</td></tr>
+            </table>
+            
+            <h3>11.5 历史分析记录</h3>
+            <p>AI 分析结果会自动保存，可在「历史记录」标签页中查看：</p>
+            <ol>
+                <li>点击 <strong>「历史记录」</strong> 标签页</li>
+                <li>显示所有历史分析记录列表，包含分析时间和类型（单次分析/对比分析）</li>
+                <li>点击某条历史记录可查看其分析结果</li>
+                <li>点击记录右侧的 <strong>「✕」</strong> 按钮可删除该历史记录</li>
+            </ol>
+            
+            <h3>11.6 配置自定义 AI 服务</h3>
+            <p>默认使用内置 AI 服务。如需使用自己的大模型 API，可进行如下配置：</p>
+            <ol>
+                <li>点击菜单栏 <strong>「设置」</strong> → <strong>「设置...」</strong></li>
+                <li>在设置对话框中找到 <strong>「AI 分析设置」</strong> 区域</li>
+                <li>勾选 <strong>「使用自定义API」</strong></li>
+                <li>填写以下配置：
+                    <ul>
+                        <li><strong>API 地址</strong>：兼容 OpenAI 格式的 API 地址，如 <code>https://api.example.com/v1</code></li>
+                        <li><strong>API Key</strong>：API 访问密钥</li>
+                        <li><strong>模型名称</strong>：要使用的模型名称，如 <code>gpt-4o</code>、<code>deepseek-chat</code> 等</li>
+                    </ul>
+                </li>
+                <li>点击 <strong>「测试连接」</strong> 按钮验证配置是否正确</li>
+                <li>测试成功后，点击 <strong>「保存」</strong> 保存配置</li>
+            </ol>
+            
+            <div class="note">
+                <strong>注意：</strong>自定义 API 需兼容 OpenAI Chat Completions API 格式。API Key 会加密存储在本地，不会上传到服务器。
+            </div>
+            
+            <h2 id="section12">12. 文件操作</h2>
+            
+            <h3>12.1 保存布局</h3>
             <p><strong>方法一：菜单保存</strong></p>
             <ol>
                 <li>点击「文件」→「保存」</li>
@@ -1384,14 +1468,14 @@
                 <li>点击「保存」</li>
             </ol>
             
-            <h3>11.2 打开布局</h3>
+            <h3>12.2 打开布局</h3>
             <ol>
                 <li>点击「文件」→「打开」</li>
                 <li>选择 <code>.json</code> 格式的布局文件</li>
                 <li>点击「打开」</li>
             </ol>
             
-            <h3>11.3 文件格式说明</h3>
+            <h3>12.3 文件格式说明</h3>
             <p>布局文件为 JSON 格式，包含：</p>
             <ul>
                 <li>画布尺寸设置</li>
@@ -1401,7 +1485,7 @@
                 <li>物料定义</li>
             </ul>
             
-            <h2 id="section12">12. 快捷键参考</h2>
+            <h2 id="section13">13. 快捷键参考</h2>
             <table>
                 <tr><th>快捷键</th><th>功能</th></tr>
                 <tr><td><code>Delete</code></td><td>删除选中对象</td></tr>
