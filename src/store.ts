@@ -18,6 +18,8 @@ import type {
   ProductRouteCheckResult,
   SimulationMode,
   WarehouseSelectionPriority,
+  AiApiConfig,
+  AiAnalysisRecord,
 } from './types';
 
 interface AppState {
@@ -125,6 +127,20 @@ interface AppState {
   closeProductRoutesModal: () => void;
   openValidationErrorModal: (errors: string[]) => void;
   closeValidationErrorModal: () => void;
+
+  showAiAnalysisModal: boolean;
+  openAiAnalysisModal: () => void;
+  closeAiAnalysisModal: () => void;
+  aiApiConfig: AiApiConfig;
+  loadAiApiConfig: () => Promise<void>;
+  saveAiApiConfig: (config: AiApiConfig) => Promise<void>;
+  testAiConnection: () => Promise<string>;
+  aiAnalysisLoading: boolean;
+  aiAnalysisRecords: AiAnalysisRecord[];
+  loadAiAnalysisRecords: () => Promise<void>;
+  callAiAnalysis: (mdContent: string, recordCount: number) => Promise<string>;
+  saveAiAnalysisRecord: (recordIds: string[], prompt: string, result: string, modelUsed: string) => Promise<AiAnalysisRecord>;
+  deleteAiAnalysisRecord: (recordId: string) => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -187,6 +203,15 @@ export const useAppStore = create<AppState>((set) => ({
   historyIndex: -1,
   canUndo: false,
   canRedo: false,
+  showAiAnalysisModal: false,
+  aiApiConfig: {
+    use_custom_api: false,
+    custom_base_url: undefined,
+    custom_api_key: undefined,
+    custom_model: undefined,
+  },
+  aiAnalysisLoading: false,
+  aiAnalysisRecords: [],
 
   saveToHistory: () => set((state) => {
     const newHistory = state.history.slice(0, state.historyIndex + 1);
@@ -1119,5 +1144,81 @@ export const useAppStore = create<AppState>((set) => ({
 
   closeValidationErrorModal: () => {
     set({ showValidationErrorModal: false, validationErrors: null });
+  },
+
+  openAiAnalysisModal: () => set({ showAiAnalysisModal: true }),
+  closeAiAnalysisModal: () => set({ showAiAnalysisModal: false }),
+
+  loadAiApiConfig: async () => {
+    try {
+      const config = await invoke<AiApiConfig>('get_ai_api_config');
+      set({ aiApiConfig: config });
+    } catch (error) {
+      console.error('Failed to load AI API config:', error);
+    }
+  },
+
+  saveAiApiConfig: async (config: AiApiConfig) => {
+    try {
+      await invoke('save_ai_api_config', { config });
+      set({ aiApiConfig: config });
+    } catch (error) {
+      console.error('Failed to save AI API config:', error);
+      throw error;
+    }
+  },
+
+  testAiConnection: async () => {
+    try {
+      const result = await invoke<string>('test_ai_connection');
+      return result;
+    } catch (error) {
+      throw new Error(String(error));
+    }
+  },
+
+  loadAiAnalysisRecords: async () => {
+    try {
+      const records = await invoke<AiAnalysisRecord[]>('get_ai_analysis_records');
+      set({ aiAnalysisRecords: records });
+    } catch (error) {
+      console.error('Failed to load AI analysis records:', error);
+    }
+  },
+
+  callAiAnalysis: async (mdContent: string, recordCount: number) => {
+    set({ aiAnalysisLoading: true });
+    try {
+      const result = await invoke<string>('call_ai_analysis', { mdContent, recordCount });
+      set({ aiAnalysisLoading: false });
+      return result;
+    } catch (error) {
+      set({ aiAnalysisLoading: false });
+      throw new Error(String(error));
+    }
+  },
+
+  saveAiAnalysisRecord: async (recordIds: string[], prompt: string, result: string, modelUsed: string) => {
+    try {
+      const record = await invoke<AiAnalysisRecord>('save_ai_analysis_record', { recordIds, prompt, result, modelUsed });
+      set((state) => ({
+        aiAnalysisRecords: [...state.aiAnalysisRecords, record],
+      }));
+      return record;
+    } catch (error) {
+      console.error('Failed to save AI analysis record:', error);
+      throw error;
+    }
+  },
+
+  deleteAiAnalysisRecord: async (recordId: string) => {
+    try {
+      await invoke('delete_ai_analysis_record', { recordId });
+      set((state) => ({
+        aiAnalysisRecords: state.aiAnalysisRecords.filter((r) => r.id !== recordId),
+      }));
+    } catch (error) {
+      console.error('Failed to delete AI analysis record:', error);
+    }
   },
 }));

@@ -4,6 +4,7 @@ import type { ResourceSelectionRule, Device, SimulationMode, EndNode, WarehouseS
 import { calculateConnectionLengthMm, calculateElbowIntermediatePoints, getDeviceAnchorPx } from '../utils/connectionUtils';
 import ProductRoutesModal from './ProductRoutesModal';
 import ValidationErrorModal from './ValidationErrorModal';
+import AiAnalysisModal from './AiAnalysisModal';
 
 export default function SimControlPanel() {
   const simulation = useAppStore((state) => state.simulation);
@@ -48,6 +49,7 @@ export default function SimControlPanel() {
   const [sampleIntervalInput, setSampleIntervalInput] = useState(String(simulation.utilization_sample_interval_s || 1));
   const [showSettings, setShowSettings] = useState(false);
   const [showRuleHelp, setShowRuleHelp] = useState(false);
+  const [showAiAnalysis, setShowAiAnalysis] = useState(false);
   
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -475,6 +477,16 @@ export default function SimControlPanel() {
           </svg>
         </button>
 
+        <button
+          className="sim-control-btn"
+          onClick={() => setShowAiAnalysis(true)}
+          title="AI分析"
+          disabled={canvas.simulation_records.length === 0}
+          style={canvas.simulation_records.length === 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+        >
+          <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '-0.5px' }}>AI</span>
+        </button>
+
         <div className="sim-time">
           {formatTime(simulation.elapsed_s)} / {formatTime(simulation.duration_s)}
         </div>
@@ -620,6 +632,10 @@ export default function SimControlPanel() {
 
       {showValidationErrorModal && validationErrors && (
         <ValidationErrorModal errors={validationErrors} onClose={closeValidationErrorModal} />
+      )}
+
+      {showAiAnalysis && (
+        <AiAnalysisModal onClose={() => setShowAiAnalysis(false)} />
       )}
     </div>
   );

@@ -2,6 +2,7 @@ pub mod models;
 pub mod simulation;
 pub mod commands;
 pub mod state;
+pub mod ai;
 
 use tauri::Manager;
 
@@ -63,6 +64,13 @@ pub fn run() {
             commands::update_settings,
             commands::get_product_routes,
             commands::open_user_manual,
+            ai::get_ai_api_config,
+            ai::save_ai_api_config,
+            ai::test_ai_connection,
+            ai::call_ai_analysis,
+            ai::get_ai_analysis_records,
+            ai::save_ai_analysis_record,
+            ai::delete_ai_analysis_record,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

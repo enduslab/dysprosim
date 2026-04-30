@@ -552,3 +552,19 @@ export interface DisassemblyStationError {
   disassembly_product_code?: string;
   disassembly_product_name?: string;
 }
+
+export interface AiApiConfig {
+  use_custom_api: boolean;
+  custom_base_url?: string;
+  custom_api_key?: string;
+  custom_model?: string;
+}
+
+export interface AiAnalysisRecord {
+  id: string;
+  record_ids: string[];
+  timestamp: string;
+  prompt: string;
+  result: string;
+  model_used: string;
+}
