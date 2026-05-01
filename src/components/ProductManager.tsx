@@ -81,6 +81,7 @@ export default function ProductManager({ isOpen, onClose }: ProductManagerProps)
                     <th>编码</th>
                     <th>名称</th>
                     <th>颜色</th>
+                    <th>优先级</th>
                     <th style={{ width: '100px' }}>操作</th>
                   </tr>
                 </thead>
@@ -103,6 +104,7 @@ export default function ProductManager({ isOpen, onClose }: ProductManagerProps)
                           {product.color}
                         </div>
                       </td>
+                      <td>{product.priority ?? '-'}</td>
                       <td>
                         <button 
                           className="btn" 
@@ -166,6 +168,25 @@ export default function ProductManager({ isOpen, onClose }: ProductManagerProps)
                   onChange={(e) => setEditingProduct(prev => prev ? { ...prev, color: e.target.value } : null)}
                 />
               </div>
+            </div>
+
+            <div className="property-row">
+              <label className="property-label">优先级</label>
+              <select
+                className="property-input"
+                value={editingProduct?.priority ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setEditingProduct(prev => prev ? { ...prev, priority: val === '' ? null : Number(val) } : null);
+                }}
+              >
+                <option value="">未设置</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+              </select>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>

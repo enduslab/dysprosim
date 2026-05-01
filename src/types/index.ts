@@ -14,6 +14,8 @@ export type ReleaseMode = 'immediate' | 'wait_for_idle';
 
 export type ResourceSelectionRule = 'basic' | 'min_wip_dynamic' | 'min_utilrate_dynamic';
 
+export type ProductSelectionStrategy = 'first_come_first_served' | 'same_type_priority_with_tool' | 'same_tool_priority';
+
 export type WarehouseSelectionPriority = 'nearest_distance' | 'farthest_distance' | 'lowest_utilization' | 'highest_utilization' | 'product_concentrated' | 'product_dispersed' | 'least_waiting_entry';
 
 export type LineStyle = 'straight' | 'curve' | 'free_polyline' | 'elbow';
@@ -194,6 +196,7 @@ export interface Product {
   name: string;
   color: string;
   bom: Record<string, number>;
+  priority?: number | null;
 }
 
 export interface Material {
@@ -283,6 +286,8 @@ export interface SimulationState {
   device_material_consumption: Record<string, Record<string, number>>;
   utilization_sample_interval_s?: number;
   warehouse_selection_priorities?: WarehouseSelectionPriority[];
+  product_selection_strategy?: ProductSelectionStrategy;
+  consider_product_priority?: boolean;
 }
 
 export interface DeviceStatistics {
@@ -414,6 +419,16 @@ export interface SimulationResults {
   simulation_mode?: SimulationMode;
   resource_selection_rule?: ResourceSelectionRule;
   warehouse_selection_priorities?: WarehouseSelectionPriority[];
+  product_selection_strategy?: ProductSelectionStrategy;
+  consider_product_priority?: boolean;
+  wip_queue_records?: Record<string, WipQueueRecord[]>;
+}
+
+export interface WipQueueRecord {
+  process_product_id: string;
+  product_code: string;
+  arrive_time_s: number;
+  dequeue_time_s: number | null;
 }
 
 export interface SimulationRecord {

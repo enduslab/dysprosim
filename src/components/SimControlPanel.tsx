@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../store';
-import type { ResourceSelectionRule, Device, SimulationMode, EndNode, WarehouseSelectionPriority } from '../types';
+import type { ResourceSelectionRule, Device, SimulationMode, EndNode, WarehouseSelectionPriority, ProductSelectionStrategy } from '../types';
 import { calculateConnectionLengthMm, calculateElbowIntermediatePoints, getDeviceAnchorPx } from '../utils/connectionUtils';
 import ProductRoutesModal from './ProductRoutesModal';
 import ValidationErrorModal from './ValidationErrorModal';
@@ -21,6 +21,8 @@ export default function SimControlPanel() {
   const setSimulationMode = useAppStore((state) => state.setSimulationMode);
   const setUtilizationSampleInterval = useAppStore((state) => state.setUtilizationSampleInterval);
   const setWarehouseSelectionPriorities = useAppStore((state) => state.setWarehouseSelectionPriorities);
+  const setProductSelectionStrategy = useAppStore((state) => state.setProductSelectionStrategy);
+  const setConsiderProductPriority = useAppStore((state) => state.setConsiderProductPriority);
   const loadSimulationState = useAppStore((state) => state.loadSimulationState);
   const saveSimulationRecord = useAppStore((state) => state.saveSimulationRecord);
   const openRecordsModal = useAppStore((state) => state.openRecordsModal);
@@ -622,6 +624,35 @@ export default function SimControlPanel() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {showSettings && (
+        <div className="sim-settings-row">
+          <div className="sim-setting-item">
+            <label>加工制品选择策略</label>
+            <select
+              value={simulation.product_selection_strategy || 'first_come_first_served'}
+              onChange={(e) => setProductSelectionStrategy(e.target.value as ProductSelectionStrategy)}
+              disabled={isRunning}
+            >
+              <option value="first_come_first_served">先到先生产</option>
+              <option value="same_type_priority_with_tool">同类优先兼顾工具</option>
+              <option value="same_tool_priority">同工具优先</option>
+            </select>
+          </div>
+          <div className="sim-setting-item">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '2px', cursor: isRunning ? 'not-allowed' : 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={simulation.consider_product_priority || false}
+                onChange={(e) => setConsiderProductPriority(e.target.checked)}
+                disabled={isRunning}
+                style={{ margin: '0 2px 0 0' }}
+              />
+              考虑产品优先级
+            </label>
           </div>
         </div>
       )}

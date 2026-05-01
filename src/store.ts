@@ -18,6 +18,7 @@ import type {
   ProductRouteCheckResult,
   SimulationMode,
   WarehouseSelectionPriority,
+  ProductSelectionStrategy,
   AiApiConfig,
   AiAnalysisRecord,
 } from './types';
@@ -115,6 +116,8 @@ interface AppState {
   setSimulationMode: (mode: SimulationMode) => Promise<void>;
   setUtilizationSampleInterval: (interval_s: number) => Promise<void>;
   setWarehouseSelectionPriorities: (priorities: WarehouseSelectionPriority[]) => Promise<void>;
+  setProductSelectionStrategy: (strategy: ProductSelectionStrategy) => Promise<void>;
+  setConsiderProductPriority: (consider: boolean) => Promise<void>;
   loadSimulationState: () => Promise<void>;
   loadSimulationResults: () => Promise<void>;
   saveSimulationRecord: () => Promise<string>;
@@ -999,6 +1002,26 @@ export const useAppStore = create<AppState>((set) => ({
   setWarehouseSelectionPriorities: async (priorities: WarehouseSelectionPriority[]) => {
     try {
       await invoke('set_warehouse_selection_priorities', { priorities });
+      const simState = await invoke<SimulationState>('get_simulation_state');
+      set({ simulation: simState });
+    } catch (error) {
+      set({ error: String(error) });
+    }
+  },
+
+  setProductSelectionStrategy: async (strategy: ProductSelectionStrategy) => {
+    try {
+      await invoke('set_product_selection_strategy', { strategy });
+      const simState = await invoke<SimulationState>('get_simulation_state');
+      set({ simulation: simState });
+    } catch (error) {
+      set({ error: String(error) });
+    }
+  },
+
+  setConsiderProductPriority: async (consider: boolean) => {
+    try {
+      await invoke('set_consider_product_priority', { consider });
       const simState = await invoke<SimulationState>('get_simulation_state');
       set({ simulation: simState });
     } catch (error) {

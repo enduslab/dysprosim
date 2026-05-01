@@ -150,6 +150,10 @@ pub struct SimulationState {
     pub end_node_arrival_records: HashMap<String, Vec<crate::models::EndNodeArrivalRecord>>,
     #[serde(default = "default_warehouse_selection_priorities")]
     pub warehouse_selection_priorities: Vec<crate::models::WarehouseSelectionPriority>,
+    #[serde(default)]
+    pub product_selection_strategy: crate::models::ProductSelectionStrategy,
+    #[serde(default)]
+    pub consider_product_priority: bool,
 }
 
 fn default_utilization_sample_interval() -> f64 { 1.0 }
@@ -196,6 +200,8 @@ impl Default for SimulationState {
             stopped_feeding_products: std::collections::HashSet::new(),
             end_node_arrival_records: HashMap::new(),
             warehouse_selection_priorities: default_warehouse_selection_priorities(),
+            product_selection_strategy: crate::models::ProductSelectionStrategy::default(),
+            consider_product_priority: false,
         }
     }
 }
@@ -342,6 +348,20 @@ pub struct SimulationResults {
     pub resource_selection_rule: Option<crate::models::ResourceSelectionRule>,
     #[serde(default)]
     pub warehouse_selection_priorities: Vec<crate::models::WarehouseSelectionPriority>,
+    #[serde(default)]
+    pub wip_queue_records: HashMap<String, Vec<WipQueueRecord>>,
+    #[serde(default)]
+    pub product_selection_strategy: Option<crate::models::ProductSelectionStrategy>,
+    #[serde(default)]
+    pub consider_product_priority: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WipQueueRecord {
+    pub process_product_id: String,
+    pub product_code: String,
+    pub arrive_time_s: f64,
+    pub dequeue_time_s: Option<f64>,
 }
 
 pub struct SimulationEngine {
@@ -444,6 +464,14 @@ impl SimulationEngine {
         if priorities.len() == 4 {
             self.state.warehouse_selection_priorities = priorities;
         }
+    }
+
+    pub fn set_product_selection_strategy(&mut self, strategy: crate::models::ProductSelectionStrategy) {
+        self.state.product_selection_strategy = strategy;
+    }
+
+    pub fn set_consider_product_priority(&mut self, consider: bool) {
+        self.state.consider_product_priority = consider;
     }
 
     fn update_total_wip(&mut self) {
@@ -2765,17 +2793,11 @@ impl SimulationEngine {
         }
 
         let pp_id = if process_product_id.is_empty() {
-            let mut waiting_pps: Vec<_> = self.state.process_products.values()
+            let waiting_pps: Vec<_> = self.state.process_products.values()
                 .filter(|pp| pp.current_node_id.as_deref() == Some(device_id) && pp.status == crate::models::ProcessProductStatus::WaitingForProcessing)
                 .collect();
             
-            waiting_pps.sort_by(|a, b| {
-                let a_time = a.node_visits.last().map(|v| v.arrive_time_s).unwrap_or(f64::MAX);
-                let b_time = b.node_visits.last().map(|v| v.arrive_time_s).unwrap_or(f64::MAX);
-                a_time.partial_cmp(&b_time).unwrap_or(std::cmp::Ordering::Equal)
-            });
-            
-            waiting_pps.first().map(|pp| pp.id.clone()).unwrap_or_default()
+            self.select_next_product(device_id, &waiting_pps)
         } else {
             process_product_id.to_string()
         };
@@ -2912,6 +2934,679 @@ impl SimulationEngine {
         for buffer_id in upstream_buffers {
             self.try_release_from_buffer(&buffer_id, time_s);
         }
+    }
+
+    fn select_next_product(&self, device_id: &str, waiting_pps: &[&crate::models::ProcessProduct]) -> String {
+        if waiting_pps.is_empty() {
+            return String::new();
+        }
+
+        if waiting_pps.len() == 1 {
+            return waiting_pps[0].id.clone();
+        }
+
+        let sim_dev = self.state.devices.get(device_id);
+        let has_last_product = sim_dev.map_or(false, |d| d.last_product_code.is_some());
+
+        let strategy = self.state.product_selection_strategy;
+        let consider_priority = self.state.consider_product_priority;
+
+        if !has_last_product && strategy != crate::models::ProductSelectionStrategy::FirstComeFirstServed {
+            return self.sort_by_arrival_time(waiting_pps).first()
+                .map(|pp| pp.id.clone())
+                .unwrap_or_default();
+        }
+
+        let candidates: Vec<&crate::models::ProcessProduct> = if consider_priority {
+            self.filter_by_priority(waiting_pps)
+        } else {
+            waiting_pps.iter().copied().collect()
+        };
+
+        if candidates.is_empty() {
+            return self.sort_by_arrival_time(waiting_pps).first()
+                .map(|pp| pp.id.clone())
+                .unwrap_or_default();
+        }
+
+        if candidates.len() == 1 {
+            return candidates[0].id.clone();
+        }
+
+        match strategy {
+            crate::models::ProductSelectionStrategy::FirstComeFirstServed => {
+                self.sort_by_arrival_time(&candidates).first()
+                    .map(|pp| pp.id.clone())
+                    .unwrap_or_default()
+            }
+            crate::models::ProductSelectionStrategy::SameTypePriorityWithTool => {
+                self.select_same_type_priority_with_tool(device_id, &candidates)
+            }
+            crate::models::ProductSelectionStrategy::SameToolPriority => {
+                self.select_same_tool_priority(device_id, &candidates)
+            }
+        }
+    }
+
+    fn filter_by_priority<'a>(&self, pps: &[&'a crate::models::ProcessProduct]) -> Vec<&'a crate::models::ProcessProduct> {
+        let mut min_priority: Option<i32> = None;
+        for pp in pps {
+            let product = self.canvas_state.products.get(&pp.product_code);
+            let p = product.and_then(|p| p.priority);
+            match (min_priority, p) {
+                (None, None) => {}
+                (None, Some(_)) => min_priority = p,
+                (Some(_), None) => {}
+                (Some(mp), Some(pv)) => {
+                    if pv < mp {
+                        min_priority = Some(pv);
+                    }
+                }
+            }
+        }
+
+        let has_any_priority = pps.iter().any(|pp| {
+            self.canvas_state.products.get(&pp.product_code)
+                .and_then(|p| p.priority)
+                .is_some()
+        });
+
+        if !has_any_priority {
+            return pps.iter().copied().collect();
+        }
+
+        match min_priority {
+            Some(mp) => pps.iter()
+                .filter(|pp| {
+                    self.canvas_state.products.get(&pp.product_code)
+                        .and_then(|p| p.priority) == Some(mp)
+                })
+                .copied()
+                .collect(),
+            None => pps.iter()
+                .filter(|pp| {
+                    self.canvas_state.products.get(&pp.product_code)
+                        .and_then(|p| p.priority)
+                        .is_none()
+                })
+                .copied()
+                .collect(),
+        }
+    }
+
+    fn sort_by_arrival_time<'a>(&self, pps: &[&'a crate::models::ProcessProduct]) -> Vec<&'a crate::models::ProcessProduct> {
+        let mut sorted: Vec<_> = pps.iter().copied().collect();
+        sorted.sort_by(|a, b| {
+            let a_time = a.node_visits.last().map(|v| v.arrive_time_s).unwrap_or(f64::MAX);
+            let b_time = b.node_visits.last().map(|v| v.arrive_time_s).unwrap_or(f64::MAX);
+            a_time.partial_cmp(&b_time).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        sorted
+    }
+
+    fn sort_product_codes_by_arrival_time(&self, device_id: &str, product_codes: &[String]) -> String {
+        let sim_dev = match self.state.devices.get(device_id) {
+            Some(d) => d,
+            None => return product_codes.first().cloned().unwrap_or_default(),
+        };
+
+        let mut earliest: Option<(String, f64)> = None;
+
+        for code in product_codes {
+            let pp_ids: Vec<String> = {
+                let assembly_wip = sim_dev.assembly_wip.get(code);
+                let disassembly_wip = sim_dev.disassembly_wip.get(code);
+                if let Some(ids) = assembly_wip {
+                    ids.clone()
+                } else if let Some(ids) = disassembly_wip {
+                    ids.clone()
+                } else {
+                    continue;
+                }
+            };
+
+            if let Some(first_pp_id) = pp_ids.first() {
+                if let Some(pp) = self.state.process_products.get(first_pp_id) {
+                    let arrive_time = pp.node_visits.last().map(|v| v.arrive_time_s).unwrap_or(f64::MAX);
+                    if earliest.is_none() || arrive_time < earliest.as_ref().unwrap().1 {
+                        earliest = Some((code.clone(), arrive_time));
+                    }
+                }
+            }
+        }
+
+        earliest.map(|(code, _)| code).unwrap_or_else(|| product_codes.first().cloned().unwrap_or_default())
+    }
+
+    fn select_same_type_priority_with_tool(&self, device_id: &str, candidates: &[&crate::models::ProcessProduct]) -> String {
+        let sim_dev = match self.state.devices.get(device_id) {
+            Some(d) => d,
+            None => return self.sort_by_arrival_time(candidates).first().map(|pp| pp.id.clone()).unwrap_or_default(),
+        };
+
+        let last_product_code = match &sim_dev.last_product_code {
+            Some(code) => code.clone(),
+            None => return self.sort_by_arrival_time(candidates).first().map(|pp| pp.id.clone()).unwrap_or_default(),
+        };
+
+        let same_type: Vec<_> = candidates.iter()
+            .filter(|pp| pp.product_code == last_product_code)
+            .copied()
+            .collect();
+
+        if !same_type.is_empty() {
+            return self.sort_by_arrival_time(&same_type).first().map(|pp| pp.id.clone()).unwrap_or_default();
+        }
+
+        let last_tool_keys: std::collections::HashSet<String> = sim_dev.last_tools.keys().cloned().collect();
+
+        let mut exact_tool_match: Vec<_> = Vec::new();
+        for pp in candidates {
+            let tools = self.get_product_tools(device_id, &pp.product_code);
+            let tool_keys: std::collections::HashSet<String> = tools.keys().cloned().collect();
+            if tool_keys == last_tool_keys {
+                exact_tool_match.push(*pp);
+            }
+        }
+
+        if exact_tool_match.len() == 1 {
+            return exact_tool_match[0].id.clone();
+        } else if exact_tool_match.len() > 1 {
+            let unique_codes: std::collections::HashSet<&str> = exact_tool_match.iter().map(|pp| pp.product_code.as_str()).collect();
+            if unique_codes.len() == 1 {
+                return self.sort_by_arrival_time(&exact_tool_match).first().map(|pp| pp.id.clone()).unwrap_or_default();
+            }
+            return self.sort_by_arrival_time(&exact_tool_match).first().map(|pp| pp.id.clone()).unwrap_or_default();
+        }
+
+        let mut best_count = 0usize;
+        let mut best_pps: Vec<&crate::models::ProcessProduct> = Vec::new();
+
+        for pp in candidates {
+            let tools = self.get_product_tools(device_id, &pp.product_code);
+            let tool_keys: std::collections::HashSet<&String> = tools.keys().collect();
+            let common_count = tool_keys.intersection(&last_tool_keys.iter().collect()).count();
+
+            if common_count > best_count {
+                best_count = common_count;
+                best_pps.clear();
+                best_pps.push(*pp);
+            } else if common_count == best_count && common_count > 0 {
+                best_pps.push(*pp);
+            }
+        }
+
+        if !best_pps.is_empty() {
+            if best_pps.len() == 1 {
+                return best_pps[0].id.clone();
+            }
+            let unique_codes: std::collections::HashSet<&str> = best_pps.iter().map(|pp| pp.product_code.as_str()).collect();
+            if unique_codes.len() == 1 {
+                return self.sort_by_arrival_time(&best_pps).first().map(|pp| pp.id.clone()).unwrap_or_default();
+            }
+            return self.sort_by_arrival_time(&best_pps).first().map(|pp| pp.id.clone()).unwrap_or_default();
+        }
+
+        self.sort_by_arrival_time(candidates).first().map(|pp| pp.id.clone()).unwrap_or_default()
+    }
+
+    fn select_same_tool_priority(&self, device_id: &str, candidates: &[&crate::models::ProcessProduct]) -> String {
+        let sim_dev = match self.state.devices.get(device_id) {
+            Some(d) => d,
+            None => return self.sort_by_arrival_time(candidates).first().map(|pp| pp.id.clone()).unwrap_or_default(),
+        };
+
+        let _last_product_code = match &sim_dev.last_product_code {
+            Some(code) => code.clone(),
+            None => return self.sort_by_arrival_time(candidates).first().map(|pp| pp.id.clone()).unwrap_or_default(),
+        };
+
+        let last_tool_keys: std::collections::HashSet<String> = sim_dev.last_tools.keys().cloned().collect();
+
+        let mut exact_tool_match: Vec<_> = Vec::new();
+        for pp in candidates {
+            let tools = self.get_product_tools(device_id, &pp.product_code);
+            let tool_keys: std::collections::HashSet<String> = tools.keys().cloned().collect();
+            if tool_keys == last_tool_keys {
+                exact_tool_match.push(*pp);
+            }
+        }
+
+        if exact_tool_match.len() == 1 {
+            return exact_tool_match[0].id.clone();
+        } else if exact_tool_match.len() > 1 {
+            let unique_codes: std::collections::HashSet<&str> = exact_tool_match.iter().map(|pp| pp.product_code.as_str()).collect();
+            if unique_codes.len() == 1 {
+                return self.sort_by_arrival_time(&exact_tool_match).first().map(|pp| pp.id.clone()).unwrap_or_default();
+            }
+            return self.sort_by_arrival_time(&exact_tool_match).first().map(|pp| pp.id.clone()).unwrap_or_default();
+        }
+
+        let mut best_count = 0usize;
+        let mut best_pps: Vec<&crate::models::ProcessProduct> = Vec::new();
+
+        for pp in candidates {
+            let tools = self.get_product_tools(device_id, &pp.product_code);
+            let tool_keys: std::collections::HashSet<&String> = tools.keys().collect();
+            let common_count = tool_keys.intersection(&last_tool_keys.iter().collect()).count();
+
+            if common_count > best_count {
+                best_count = common_count;
+                best_pps.clear();
+                best_pps.push(*pp);
+            } else if common_count == best_count && common_count > 0 {
+                best_pps.push(*pp);
+            }
+        }
+
+        if !best_pps.is_empty() {
+            if best_pps.len() == 1 {
+                return best_pps[0].id.clone();
+            }
+            let unique_codes: std::collections::HashSet<&str> = best_pps.iter().map(|pp| pp.product_code.as_str()).collect();
+            if unique_codes.len() == 1 {
+                return self.sort_by_arrival_time(&best_pps).first().map(|pp| pp.id.clone()).unwrap_or_default();
+            }
+            return self.sort_by_arrival_time(&best_pps).first().map(|pp| pp.id.clone()).unwrap_or_default();
+        }
+
+        self.sort_by_arrival_time(candidates).first().map(|pp| pp.id.clone()).unwrap_or_default()
+    }
+
+    fn select_assembly_product(&self, device_id: &str, eligible_products: &[String]) -> String {
+        if eligible_products.is_empty() {
+            return String::new();
+        }
+        if eligible_products.len() == 1 {
+            return eligible_products[0].clone();
+        }
+
+        let strategy = self.state.product_selection_strategy;
+        let consider_priority = self.state.consider_product_priority;
+
+        let sim_dev = self.state.devices.get(device_id);
+        let has_last_product = sim_dev.map_or(false, |d| d.last_product_code.is_some());
+
+        if !has_last_product && strategy != crate::models::ProductSelectionStrategy::FirstComeFirstServed {
+            return self.sort_product_codes_by_arrival_time(device_id, eligible_products);
+        }
+
+        let candidates: Vec<String> = if consider_priority {
+            self.filter_products_by_priority(eligible_products)
+        } else {
+            eligible_products.to_vec()
+        };
+
+        if candidates.is_empty() {
+            return self.sort_product_codes_by_arrival_time(device_id, eligible_products);
+        }
+
+        if candidates.len() == 1 {
+            return candidates[0].clone();
+        }
+
+        match strategy {
+            crate::models::ProductSelectionStrategy::FirstComeFirstServed => {
+                self.sort_product_codes_by_arrival_time(device_id, &candidates)
+            }
+            crate::models::ProductSelectionStrategy::SameTypePriorityWithTool => {
+                self.select_assembly_same_type_priority_with_tool(device_id, &candidates)
+            }
+            crate::models::ProductSelectionStrategy::SameToolPriority => {
+                self.select_assembly_same_tool_priority(device_id, &candidates)
+            }
+        }
+    }
+
+    fn filter_products_by_priority(&self, product_codes: &[String]) -> Vec<String> {
+        let mut min_priority: Option<i32> = None;
+        for code in product_codes {
+            let p = self.canvas_state.products.get(code).and_then(|p| p.priority);
+            match (min_priority, p) {
+                (None, None) => {}
+                (None, Some(_)) => min_priority = p,
+                (Some(_), None) => {}
+                (Some(mp), Some(pv)) => {
+                    if pv < mp {
+                        min_priority = Some(pv);
+                    }
+                }
+            }
+        }
+
+        let has_any_priority = product_codes.iter().any(|code| {
+            self.canvas_state.products.get(code).and_then(|p| p.priority).is_some()
+        });
+
+        if !has_any_priority {
+            return product_codes.to_vec();
+        }
+
+        match min_priority {
+            Some(mp) => product_codes.iter()
+                .filter(|code| {
+                    self.canvas_state.products.get(*code).and_then(|p| p.priority) == Some(mp)
+                })
+                .cloned()
+                .collect(),
+            None => product_codes.iter()
+                .filter(|code| {
+                    self.canvas_state.products.get(*code).and_then(|p| p.priority).is_none()
+                })
+                .cloned()
+                .collect(),
+        }
+    }
+
+    fn select_assembly_same_type_priority_with_tool(&self, device_id: &str, candidates: &[String]) -> String {
+        let sim_dev = match self.state.devices.get(device_id) {
+            Some(d) => d,
+            None => return candidates[0].clone(),
+        };
+
+        let last_product_code = match &sim_dev.last_product_code {
+            Some(code) => code.clone(),
+            None => return candidates[0].clone(),
+        };
+
+        let same_type: Vec<_> = candidates.iter().filter(|c| **c == last_product_code).cloned().collect();
+        if !same_type.is_empty() {
+            return same_type[0].clone();
+        }
+
+        let last_tool_keys: std::collections::HashSet<String> = sim_dev.last_tools.keys().cloned().collect();
+
+        let exact_tool_match: Vec<_> = candidates.iter()
+            .filter(|c| {
+                let tools = self.get_product_tools(device_id, c);
+                let tool_keys: std::collections::HashSet<String> = tools.keys().cloned().collect();
+                tool_keys == last_tool_keys
+            })
+            .cloned()
+            .collect();
+
+        if !exact_tool_match.is_empty() {
+            if exact_tool_match.len() == 1 {
+                return exact_tool_match[0].clone();
+            }
+            let unique_codes: std::collections::HashSet<&str> = exact_tool_match.iter().map(|s| s.as_str()).collect();
+            if unique_codes.len() == 1 {
+                return exact_tool_match[0].clone();
+            }
+            return exact_tool_match[0].clone();
+        }
+
+        let mut best_count = 0usize;
+        let mut best_codes: Vec<String> = Vec::new();
+
+        for code in candidates {
+            let tools = self.get_product_tools(device_id, code);
+            let tool_keys: std::collections::HashSet<&String> = tools.keys().collect();
+            let common_count = tool_keys.intersection(&last_tool_keys.iter().collect()).count();
+
+            if common_count > best_count {
+                best_count = common_count;
+                best_codes.clear();
+                best_codes.push(code.clone());
+            } else if common_count == best_count && common_count > 0 {
+                best_codes.push(code.clone());
+            }
+        }
+
+        if !best_codes.is_empty() {
+            if best_codes.len() == 1 {
+                return best_codes[0].clone();
+            }
+            let unique_codes: std::collections::HashSet<&str> = best_codes.iter().map(|s| s.as_str()).collect();
+            if unique_codes.len() == 1 {
+                return best_codes[0].clone();
+            }
+            return best_codes[0].clone();
+        }
+
+        candidates[0].clone()
+    }
+
+    fn select_assembly_same_tool_priority(&self, device_id: &str, candidates: &[String]) -> String {
+        let sim_dev = match self.state.devices.get(device_id) {
+            Some(d) => d,
+            None => return candidates[0].clone(),
+        };
+
+        let _last_product_code = match &sim_dev.last_product_code {
+            Some(code) => code.clone(),
+            None => return candidates[0].clone(),
+        };
+
+        let last_tool_keys: std::collections::HashSet<String> = sim_dev.last_tools.keys().cloned().collect();
+
+        let exact_tool_match: Vec<_> = candidates.iter()
+            .filter(|c| {
+                let tools = self.get_product_tools(device_id, c);
+                let tool_keys: std::collections::HashSet<String> = tools.keys().cloned().collect();
+                tool_keys == last_tool_keys
+            })
+            .cloned()
+            .collect();
+
+        if !exact_tool_match.is_empty() {
+            if exact_tool_match.len() == 1 {
+                return exact_tool_match[0].clone();
+            }
+            let unique_codes: std::collections::HashSet<&str> = exact_tool_match.iter().map(|s| s.as_str()).collect();
+            if unique_codes.len() == 1 {
+                return exact_tool_match[0].clone();
+            }
+            return exact_tool_match[0].clone();
+        }
+
+        let mut best_count = 0usize;
+        let mut best_codes: Vec<String> = Vec::new();
+
+        for code in candidates {
+            let tools = self.get_product_tools(device_id, code);
+            let tool_keys: std::collections::HashSet<&String> = tools.keys().collect();
+            let common_count = tool_keys.intersection(&last_tool_keys.iter().collect()).count();
+
+            if common_count > best_count {
+                best_count = common_count;
+                best_codes.clear();
+                best_codes.push(code.clone());
+            } else if common_count == best_count && common_count > 0 {
+                best_codes.push(code.clone());
+            }
+        }
+
+        if !best_codes.is_empty() {
+            if best_codes.len() == 1 {
+                return best_codes[0].clone();
+            }
+            let unique_codes: std::collections::HashSet<&str> = best_codes.iter().map(|s| s.as_str()).collect();
+            if unique_codes.len() == 1 {
+                return best_codes[0].clone();
+            }
+            return best_codes[0].clone();
+        }
+
+        candidates[0].clone()
+    }
+
+    fn select_disassembly_item(&self, device_id: &str, eligible_items: &[String]) -> String {
+        if eligible_items.is_empty() {
+            return String::new();
+        }
+        if eligible_items.len() == 1 {
+            return eligible_items[0].clone();
+        }
+
+        let strategy = self.state.product_selection_strategy;
+        let consider_priority = self.state.consider_product_priority;
+
+        let sim_dev = self.state.devices.get(device_id);
+        let has_last_product = sim_dev.map_or(false, |d| d.last_product_code.is_some());
+
+        if !has_last_product && strategy != crate::models::ProductSelectionStrategy::FirstComeFirstServed {
+            return self.sort_product_codes_by_arrival_time(device_id, eligible_items);
+        }
+
+        let candidates: Vec<String> = if consider_priority {
+            self.filter_products_by_priority(eligible_items)
+        } else {
+            eligible_items.to_vec()
+        };
+
+        if candidates.is_empty() {
+            return self.sort_product_codes_by_arrival_time(device_id, eligible_items);
+        }
+
+        if candidates.len() == 1 {
+            return candidates[0].clone();
+        }
+
+        match strategy {
+            crate::models::ProductSelectionStrategy::FirstComeFirstServed => {
+                self.sort_product_codes_by_arrival_time(device_id, &candidates)
+            }
+            crate::models::ProductSelectionStrategy::SameTypePriorityWithTool => {
+                self.select_disassembly_same_type_priority_with_tool(device_id, &candidates)
+            }
+            crate::models::ProductSelectionStrategy::SameToolPriority => {
+                self.select_disassembly_same_tool_priority(device_id, &candidates)
+            }
+        }
+    }
+
+    fn select_disassembly_same_type_priority_with_tool(&self, device_id: &str, candidates: &[String]) -> String {
+        let sim_dev = match self.state.devices.get(device_id) {
+            Some(d) => d,
+            None => return candidates[0].clone(),
+        };
+
+        let last_product_code = match &sim_dev.last_product_code {
+            Some(code) => code.clone(),
+            None => return candidates[0].clone(),
+        };
+
+        let same_type: Vec<_> = candidates.iter().filter(|c| **c == last_product_code).cloned().collect();
+        if !same_type.is_empty() {
+            return same_type[0].clone();
+        }
+
+        let last_tool_keys: std::collections::HashSet<String> = sim_dev.last_tools.keys().cloned().collect();
+
+        let exact_tool_match: Vec<_> = candidates.iter()
+            .filter(|c| {
+                let tools = self.get_product_tools(device_id, c);
+                let tool_keys: std::collections::HashSet<String> = tools.keys().cloned().collect();
+                tool_keys == last_tool_keys
+            })
+            .cloned()
+            .collect();
+
+        if !exact_tool_match.is_empty() {
+            if exact_tool_match.len() == 1 {
+                return exact_tool_match[0].clone();
+            }
+            let unique_codes: std::collections::HashSet<&str> = exact_tool_match.iter().map(|s| s.as_str()).collect();
+            if unique_codes.len() == 1 {
+                return exact_tool_match[0].clone();
+            }
+            return exact_tool_match[0].clone();
+        }
+
+        let mut best_count = 0usize;
+        let mut best_codes: Vec<String> = Vec::new();
+
+        for code in candidates {
+            let tools = self.get_product_tools(device_id, code);
+            let tool_keys: std::collections::HashSet<&String> = tools.keys().collect();
+            let common_count = tool_keys.intersection(&last_tool_keys.iter().collect()).count();
+
+            if common_count > best_count {
+                best_count = common_count;
+                best_codes.clear();
+                best_codes.push(code.clone());
+            } else if common_count == best_count && common_count > 0 {
+                best_codes.push(code.clone());
+            }
+        }
+
+        if !best_codes.is_empty() {
+            if best_codes.len() == 1 {
+                return best_codes[0].clone();
+            }
+            let unique_codes: std::collections::HashSet<&str> = best_codes.iter().map(|s| s.as_str()).collect();
+            if unique_codes.len() == 1 {
+                return best_codes[0].clone();
+            }
+            return best_codes[0].clone();
+        }
+
+        candidates[0].clone()
+    }
+
+    fn select_disassembly_same_tool_priority(&self, device_id: &str, candidates: &[String]) -> String {
+        let sim_dev = match self.state.devices.get(device_id) {
+            Some(d) => d,
+            None => return candidates[0].clone(),
+        };
+
+        let _last_product_code = match &sim_dev.last_product_code {
+            Some(code) => code.clone(),
+            None => return candidates[0].clone(),
+        };
+
+        let last_tool_keys: std::collections::HashSet<String> = sim_dev.last_tools.keys().cloned().collect();
+
+        let exact_tool_match: Vec<_> = candidates.iter()
+            .filter(|c| {
+                let tools = self.get_product_tools(device_id, c);
+                let tool_keys: std::collections::HashSet<String> = tools.keys().cloned().collect();
+                tool_keys == last_tool_keys
+            })
+            .cloned()
+            .collect();
+
+        if !exact_tool_match.is_empty() {
+            if exact_tool_match.len() == 1 {
+                return exact_tool_match[0].clone();
+            }
+            let unique_codes: std::collections::HashSet<&str> = exact_tool_match.iter().map(|s| s.as_str()).collect();
+            if unique_codes.len() == 1 {
+                return exact_tool_match[0].clone();
+            }
+            return exact_tool_match[0].clone();
+        }
+
+        let mut best_count = 0usize;
+        let mut best_codes: Vec<String> = Vec::new();
+
+        for code in candidates {
+            let tools = self.get_product_tools(device_id, code);
+            let tool_keys: std::collections::HashSet<&String> = tools.keys().collect();
+            let common_count = tool_keys.intersection(&last_tool_keys.iter().collect()).count();
+
+            if common_count > best_count {
+                best_count = common_count;
+                best_codes.clear();
+                best_codes.push(code.clone());
+            } else if common_count == best_count && common_count > 0 {
+                best_codes.push(code.clone());
+            }
+        }
+
+        if !best_codes.is_empty() {
+            if best_codes.len() == 1 {
+                return best_codes[0].clone();
+            }
+            let unique_codes: std::collections::HashSet<&str> = best_codes.iter().map(|s| s.as_str()).collect();
+            if unique_codes.len() == 1 {
+                return best_codes[0].clone();
+            }
+            return best_codes[0].clone();
+        }
+
+        candidates[0].clone()
     }
 
     fn get_product_tools(&self, device_id: &str, product_code: &str) -> HashMap<String, f64> {
@@ -3183,56 +3878,53 @@ impl SimulationEngine {
             return;
         }
 
-        let mut selected_product: Option<String> = None;
-        let mut selected_component_pp_ids: HashMap<String, Vec<String>> = HashMap::new();
-
-        for product_code in &assembly_products {
-            if self.state.simulation_mode == crate::models::SimulationMode::FixedOutput
-                && self.state.stopped_feeding_products.contains(product_code) {
-                continue;
-            }
-
-            let component_requirements = assembly_station.product_upstream_requirements.get(product_code);
-            if component_requirements.is_none() || component_requirements.unwrap().is_empty() {
-                continue;
-            }
-
-            let requirements = component_requirements.unwrap();
-            let mut can_assemble = true;
-            let mut component_pp_ids: HashMap<String, Vec<String>> = HashMap::new();
-
-            for (component_code, required_qty) in requirements {
-                let required_qty = *required_qty as usize;
-                if required_qty == 0 {
-                    continue;
+        let eligible_products: Vec<String> = assembly_products.iter()
+            .filter(|product_code| {
+                if self.state.simulation_mode == crate::models::SimulationMode::FixedOutput
+                    && self.state.stopped_feeding_products.contains(*product_code) {
+                    return false;
                 }
-
-                let available = sim_dev.assembly_wip.get(component_code);
-                
-                if let Some(pp_ids) = available {
-                    if pp_ids.len() >= required_qty {
-                        component_pp_ids.insert(component_code.clone(), pp_ids[..required_qty].to_vec());
-                    } else {
-                        can_assemble = false;
-                        break;
+                let component_requirements = assembly_station.product_upstream_requirements.get(*product_code);
+                if component_requirements.is_none() || component_requirements.unwrap().is_empty() {
+                    return false;
+                }
+                let requirements = component_requirements.unwrap();
+                for (component_code, required_qty) in requirements {
+                    let required_qty = *required_qty as usize;
+                    if required_qty == 0 {
+                        continue;
                     }
-                } else {
-                    can_assemble = false;
-                    break;
+                    let available = sim_dev.assembly_wip.get(component_code);
+                    if available.is_none() || available.unwrap().len() < required_qty {
+                        return false;
+                    }
                 }
-            }
+                true
+            })
+            .cloned()
+            .collect();
 
-            if can_assemble && !component_pp_ids.is_empty() {
-                selected_product = Some(product_code.clone());
-                selected_component_pp_ids = component_pp_ids;
-                break;
+        if eligible_products.is_empty() {
+            return;
+        }
+
+        let selected_product_code = self.select_assembly_product(device_id, &eligible_products);
+
+        let mut selected_component_pp_ids: HashMap<String, Vec<String>> = HashMap::new();
+        let requirements = assembly_station.product_upstream_requirements.get(&selected_product_code).unwrap();
+        for (component_code, required_qty) in requirements {
+            let required_qty = *required_qty as usize;
+            if required_qty == 0 {
+                continue;
+            }
+            if let Some(pp_ids) = sim_dev.assembly_wip.get(component_code) {
+                if pp_ids.len() >= required_qty {
+                    selected_component_pp_ids.insert(component_code.clone(), pp_ids[..required_qty].to_vec());
+                }
             }
         }
 
-        let product_code = match selected_product {
-            Some(p) => p,
-            None => return,
-        };
+        let product_code = selected_product_code;
 
         let current_tools = self.get_product_tools(device_id, &product_code);
         let (tool_switch_time, needs_switch) = self.calculate_tool_switch_time(device_id, &product_code, &current_tools);
@@ -3399,27 +4091,26 @@ impl SimulationEngine {
             return;
         }
 
-        let mut selected_item: Option<String> = None;
-        let mut selected_item_pp_id: Option<String> = None;
-
-        for item_code in &items {
-            if let Some(pp_ids) = sim_dev.disassembly_wip.get(item_code) {
-                if !pp_ids.is_empty() {
-                    selected_item = Some(item_code.clone());
-                    selected_item_pp_id = Some(pp_ids[0].clone());
-                    break;
+        let eligible_items: Vec<String> = items.iter()
+            .filter(|item_code| {
+                if let Some(pp_ids) = sim_dev.disassembly_wip.get(*item_code) {
+                    !pp_ids.is_empty()
+                } else {
+                    false
                 }
-            }
+            })
+            .cloned()
+            .collect();
+
+        if eligible_items.is_empty() {
+            return;
         }
 
-        let item_code = match selected_item {
-            Some(c) => c,
-            None => return,
-        };
+        let item_code = self.select_disassembly_item(device_id, &eligible_items);
 
-        let item_pp_id = match selected_item_pp_id {
-            Some(id) => id,
-            None => return,
+        let item_pp_id = match sim_dev.disassembly_wip.get(&item_code) {
+            Some(pp_ids) if !pp_ids.is_empty() => pp_ids[0].clone(),
+            _ => return,
         };
 
         let current_tools = self.get_product_tools(device_id, &item_code);
@@ -4983,9 +5674,67 @@ impl SimulationEngine {
             simulation_mode: Some(self.state.simulation_mode),
             resource_selection_rule: Some(self.state.resource_selection_rule),
             warehouse_selection_priorities: self.state.warehouse_selection_priorities.clone(),
+            wip_queue_records: self.collect_wip_queue_records(),
+            product_selection_strategy: Some(self.state.product_selection_strategy),
+            consider_product_priority: Some(self.state.consider_product_priority),
         }
     }
     
+    fn collect_wip_queue_records(&self) -> HashMap<String, Vec<WipQueueRecord>> {
+        let mut result: HashMap<String, Vec<WipQueueRecord>> = HashMap::new();
+
+        for (device_id, sim_dev) in &self.state.devices {
+            let device = self.canvas_state.devices.get(device_id);
+            let is_station = matches!(device, Some(crate::models::Device::Station(_)) | Some(crate::models::Device::AssemblyStation(_)) | Some(crate::models::Device::DisassemblyStation(_)));
+            if !is_station {
+                continue;
+            }
+
+            let mut records: Vec<WipQueueRecord> = Vec::new();
+
+            let pp_ids: Vec<String> = self.state.process_products.values()
+                .filter(|pp| {
+                    pp.current_node_id.as_deref() == Some(device_id.as_str())
+                        && pp.status != crate::models::ProcessProductStatus::Completed
+                })
+                .map(|pp| pp.id.clone())
+                .collect();
+
+            for pp_id in pp_ids {
+                if let Some(pp) = self.state.process_products.get(&pp_id) {
+                    let node_visit = pp.node_visits.iter().rev().find(|v| v.node_id == *device_id);
+                    let arrive_time = node_visit.map(|v| v.arrive_time_s).unwrap_or(0.0);
+
+                    let dequeue_time = if sim_dev.busy && sim_dev.processing_product.as_deref() == Some(pp_id.as_str()) {
+                        if let Some(proc_records) = self.state.processing_records.get(device_id) {
+                            proc_records.iter().rev().find(|r| r.process_product_id == pp_id)
+                                .map(|r| r.start_time_s)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    records.push(WipQueueRecord {
+                        process_product_id: pp_id,
+                        product_code: pp.product_code.clone(),
+                        arrive_time_s: arrive_time,
+                        dequeue_time_s: dequeue_time,
+                    });
+                }
+            }
+
+            records.sort_by(|a, b| a.arrive_time_s.partial_cmp(&b.arrive_time_s).unwrap_or(std::cmp::Ordering::Equal));
+
+            if !records.is_empty() {
+                result.insert(device_id.clone(), records);
+            }
+        }
+
+        result
+    }
+
     fn calculate_product_avg_process_times(&self) -> Vec<ProductAvgProcessTime> {
         use std::collections::HashMap as StdHashMap;
         

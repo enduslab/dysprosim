@@ -259,6 +259,8 @@ pub fn start_simulation(state: State<'_, AppState>) -> Result<(), String> {
     let saved_interval = simulation.state().utilization_sample_interval_s;
     let saved_mode = simulation.state().simulation_mode;
     let saved_priorities = simulation.state().warehouse_selection_priorities.clone();
+    let saved_strategy = simulation.state().product_selection_strategy;
+    let saved_consider_priority = simulation.state().consider_product_priority;
     
     let engine = crate::simulation::SimulationEngine::new(canvas.clone());
     *simulation = engine;
@@ -268,6 +270,8 @@ pub fn start_simulation(state: State<'_, AppState>) -> Result<(), String> {
     simulation.set_utilization_sample_interval(saved_interval);
     simulation.set_simulation_mode(saved_mode);
     simulation.set_warehouse_selection_priorities(saved_priorities);
+    simulation.set_product_selection_strategy(saved_strategy);
+    simulation.set_consider_product_priority(saved_consider_priority);
     simulation.start();
     
     Ok(())
@@ -296,6 +300,8 @@ pub fn reset_simulation(state: State<'_, AppState>) -> Result<(), String> {
     let saved_speed = simulation.state().speed;
     let saved_mode = simulation.state().simulation_mode;
     let saved_priorities = simulation.state().warehouse_selection_priorities.clone();
+    let saved_strategy = simulation.state().product_selection_strategy;
+    let saved_consider_priority = simulation.state().consider_product_priority;
     
     let engine = crate::simulation::SimulationEngine::new(canvas.clone());
     *simulation = engine;
@@ -303,6 +309,8 @@ pub fn reset_simulation(state: State<'_, AppState>) -> Result<(), String> {
     simulation.set_speed(saved_speed);
     simulation.set_simulation_mode(saved_mode);
     simulation.set_warehouse_selection_priorities(saved_priorities);
+    simulation.set_product_selection_strategy(saved_strategy);
+    simulation.set_consider_product_priority(saved_consider_priority);
     
     Ok(())
 }
@@ -352,6 +360,20 @@ pub fn set_utilization_sample_interval(state: State<'_, AppState>, interval_s: f
 pub fn set_warehouse_selection_priorities(state: State<'_, AppState>, priorities: Vec<crate::models::WarehouseSelectionPriority>) -> Result<(), String> {
     let mut simulation = state.simulation.lock().map_err(|e| e.to_string())?;
     simulation.set_warehouse_selection_priorities(priorities);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_product_selection_strategy(state: State<'_, AppState>, strategy: crate::models::ProductSelectionStrategy) -> Result<(), String> {
+    let mut simulation = state.simulation.lock().map_err(|e| e.to_string())?;
+    simulation.set_product_selection_strategy(strategy);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_consider_product_priority(state: State<'_, AppState>, consider: bool) -> Result<(), String> {
+    let mut simulation = state.simulation.lock().map_err(|e| e.to_string())?;
+    simulation.set_consider_product_priority(consider);
     Ok(())
 }
 

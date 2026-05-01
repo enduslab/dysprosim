@@ -42,6 +42,8 @@ pub fn run() {
             commands::set_simulation_mode,
             commands::set_utilization_sample_interval,
             commands::set_warehouse_selection_priorities,
+            commands::set_product_selection_strategy,
+            commands::set_consider_product_priority,
             commands::get_simulation_state,
             commands::get_simulation_results,
             commands::save_simulation_record,

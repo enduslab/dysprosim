@@ -1259,6 +1259,10 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
               return `${i + 1}:${labels[p] || p}`;
             }).join(' → ')}</td>
           </tr>
+          <tr>
+            <td style="padding:6px 12px;border:1px solid #ddd;background:#f8f9fa;font-weight:500;">加工制品选择策略</td>
+            <td style="padding:6px 12px;border:1px solid #ddd;">${results.product_selection_strategy === 'same_type_priority_with_tool' ? '同类优先兼顾工具' : results.product_selection_strategy === 'same_tool_priority' ? '同工具优先' : '先到先生产'}${results.consider_product_priority ? '（考虑产品优先级）' : ''}</td>
+          </tr>
         </table>
       </div>`;
 
@@ -1541,6 +1545,15 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
           </table>`;
         }
 
+        const wipQueueRecords = results.wip_queue_records?.[stat.device_id];
+        if (wipQueueRecords && wipQueueRecords.length > 0) {
+          html += `<h4 style="font-size:13px;margin:8px 0 6px 0;">在制品队列详情</h4>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;">
+            <tr><th style="padding:4px 8px;border:1px solid #ddd;background:#f0f4ff;">过程产品ID</th><th style="padding:4px 8px;border:1px solid #ddd;background:#f0f4ff;">产品编码</th><th style="padding:4px 8px;border:1px solid #ddd;background:#f0f4ff;">到达时间</th><th style="padding:4px 8px;border:1px solid #ddd;background:#f0f4ff;">移出等待加工队列时间</th></tr>
+            ${wipQueueRecords.map(record => `<tr><td style="padding:4px 8px;border:1px solid #ddd;word-break:break-all;max-width:100px;">${record.process_product_id}</td><td style="padding:4px 8px;border:1px solid #ddd;">${record.product_code}</td><td style="padding:4px 8px;border:1px solid #ddd;">${formatTimePdf(record.arrive_time_s)}</td><td style="padding:4px 8px;border:1px solid #ddd;">${record.dequeue_time_s != null ? formatTimePdf(record.dequeue_time_s) : '-'}</td></tr>`).join('')}
+          </table>`;
+        }
+
         const feedRecords = results.feed_records[stat.device_id];
         if (feedRecords && feedRecords.length > 0) {
           html += `<h4 style="font-size:13px;margin:8px 0 6px 0;">投料记录详情</h4>
@@ -1809,6 +1822,7 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
       overviewData.push(['模拟模式', results.simulation_mode === 'fixed_output' ? '固定产量' : '固定时长']);
       overviewData.push(['资源选择规则', results.resource_selection_rule === 'min_wip_dynamic' ? '动态平衡(在制品)' : results.resource_selection_rule === 'min_utilrate_dynamic' ? '动态平衡(利用率)' : '基础规则']);
       overviewData.push(['多仓库选择优先级', (results.warehouse_selection_priorities || []).map((p: string, i: number) => `${i + 1}:${priorityLabels[p] || p}`).join(' → ')]);
+      overviewData.push(['加工制品选择策略', (results.product_selection_strategy === 'same_type_priority_with_tool' ? '同类优先兼顾工具' : results.product_selection_strategy === 'same_tool_priority' ? '同工具优先' : '先到先生产') + (results.consider_product_priority ? '（考虑产品优先级）' : '')]);
 
       const ws1 = XLSX.utils.aoa_to_sheet(overviewData);
       ws1['!cols'] = [{ wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
@@ -1863,6 +1877,21 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
                 formatTime(rec.duration_s),
                 rec.start_wip,
                 rec.start_wait_transport,
+              ]);
+            }
+          }
+
+          const wipQueueRecords = results.wip_queue_records?.[devStat.device_id] || [];
+          if (wipQueueRecords.length > 0) {
+            devData.push([]);
+            devData.push(['在制品队列详情']);
+            devData.push(['过程产品ID', '产品编码', '到达时间', '移出等待加工队列时间']);
+            for (const rec of wipQueueRecords) {
+              devData.push([
+                rec.process_product_id,
+                rec.product_code,
+                formatTime(rec.arrive_time_s),
+                rec.dequeue_time_s != null ? formatTime(rec.dequeue_time_s) : '-',
               ]);
             }
           }
@@ -1989,6 +2018,7 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
       md += `| 模拟模式 | ${results.simulation_mode === 'fixed_output' ? '固定产量' : '固定时长'} |\n`;
       md += `| 资源选择规则 | ${results.resource_selection_rule === 'min_wip_dynamic' ? '动态平衡(在制品)' : results.resource_selection_rule === 'min_utilrate_dynamic' ? '动态平衡(利用率)' : '基础规则'} |\n`;
       md += `| 多仓库选择优先级 | ${(results.warehouse_selection_priorities || []).map((p: string, i: number) => `${i + 1}:${priorityLabels[p] || p}`).join(' → ')} |\n`;
+      md += `| 加工制品选择策略 | ${(results.product_selection_strategy === 'same_type_priority_with_tool' ? '同类优先兼顾工具' : results.product_selection_strategy === 'same_tool_priority' ? '同工具优先' : '先到先生产')}${results.consider_product_priority ? '（考虑产品优先级）' : ''} |\n`;
       md += '\n';
 
       const productCounts = results.completed_products_by_code || {};
@@ -2659,6 +2689,32 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
                         </table>
                       </div>
                     )}
+
+                    {selectedRecord.results.wip_queue_records && selectedRecord.results.wip_queue_records[deviceId] && selectedRecord.results.wip_queue_records[deviceId].length > 0 && (
+                      <div className="detail-records" style={{ marginTop: '12px' }}>
+                        <h6>在制品队列详情</h6>
+                        <table className="stats-table">
+                          <thead>
+                            <tr>
+                              <th>过程产品ID</th>
+                              <th>产品编码</th>
+                              <th>到达时间</th>
+                              <th>移出等待加工队列时间</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedRecord.results.wip_queue_records[deviceId].map((record, idx) => (
+                              <tr key={idx}>
+                                <td style={{ fontSize: '11px' }}>{record.process_product_id}</td>
+                                <td>{record.product_code}</td>
+                                <td>{formatTime(record.arrive_time_s)}</td>
+                                <td>{record.dequeue_time_s != null ? formatTime(record.dequeue_time_s) : '-'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                     
                     {(() => {
                       const deviceProductMaterials = computeProductMaterialConsumption(
@@ -2961,6 +3017,13 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
                               };
                               return `${i + 1}:${labels[p] || p}`;
                             }).join(' → ')}
+                          </span>
+                        </div>
+                        <div className="stat-item">
+                          <span className="stat-label">加工制品选择策略</span>
+                          <span className="stat-value">
+                            {selectedRecord.results.product_selection_strategy === 'same_type_priority_with_tool' ? '同类优先兼顾工具' : selectedRecord.results.product_selection_strategy === 'same_tool_priority' ? '同工具优先' : '先到先生产'}
+                            {selectedRecord.results.consider_product_priority ? '（考虑产品优先级）' : ''}
                           </span>
                         </div>
                       </div>

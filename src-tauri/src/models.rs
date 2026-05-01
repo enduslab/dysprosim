@@ -831,6 +831,15 @@ impl Connection {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ProductSelectionStrategy {
+    #[default]
+    FirstComeFirstServed,
+    SameTypePriorityWithTool,
+    SameToolPriority,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Product {
     pub code: String,
@@ -838,6 +847,8 @@ pub struct Product {
     pub color: String,
     #[serde(default)]
     pub bom: HashMap<String, f64>,
+    #[serde(default)]
+    pub priority: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
