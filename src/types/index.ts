@@ -6,7 +6,7 @@ export type DistributionType = 'normal' | 'triangular' | 'uniform' | 'exponentia
 
 export type IncomingRule = 'immediate' | 'collect_all';
 
-export type CapacityMode = 'fixed' | 'dynamic';
+export type CapacityMode = 'fixed';
 
 export type TransportMode = 'continuous' | 'discrete';
 

@@ -1698,7 +1698,7 @@ export default function Canvas() {
       count: number,
       startX: number,
       startY: number,
-      color: string,
+      colors: string[],
       maxVisible: number = 12
     ) => {
       if (count <= 0) return null;
@@ -1724,7 +1724,7 @@ export default function Canvas() {
             y={y}
             width={blockSize}
             height={blockSize}
-            fill={color}
+            fill={colors[i] || '#94A3B8'}
             stroke="#333333"
             strokeWidth={0.5}
             rx={1}
@@ -1784,30 +1784,50 @@ export default function Canvas() {
                   1,
                   statusIconGap,
                   statusIconGap,
-                  getProductColor(simDeviceState.processing_product)
+                  [getProductColor(simDeviceState.processing_product)]
                 )}
               </g>
             )}
-            {simDeviceState.wip > 0 && (
-              <g>
-                {renderWipIndicators(
-                  simDeviceState.wip,
-                  statusIconGap,
-                  h - statusIconGap - 6 - Math.ceil(Math.min(simDeviceState.wip, 12) / 6) * 8,
-                  getProductColor(simDeviceState.processing_product)
-                )}
-              </g>
-            )}
-            {simDeviceState.wait_transport > 0 && (
-              <g>
-                {renderWipIndicators(
-                  simDeviceState.wait_transport,
-                  w - statusIconGap - Math.min(simDeviceState.wait_transport, 6) * 8 + 2,
-                  h - statusIconGap - 6 - Math.ceil(Math.min(simDeviceState.wait_transport, 12) / 6) * 8,
-                  getProductColor(simDeviceState.processing_product)
-                )}
-              </g>
-            )}
+            {simDeviceState.wip > 0 && (() => {
+              const wipColors = Object.values(simulation.process_products)
+                .filter(pp => pp.current_node_id === device.id && pp.status === 'WaitingForProcessing')
+                .sort((a, b) => {
+                  const aVisit = a.node_visits.find(v => v.node_id === device.id);
+                  const bVisit = b.node_visits.find(v => v.node_id === device.id);
+                  return (aVisit?.arrive_time_s ?? 0) - (bVisit?.arrive_time_s ?? 0);
+                })
+                .map(pp => getProductColor(pp.product_code));
+              return (
+                <g>
+                  {renderWipIndicators(
+                    simDeviceState.wip,
+                    statusIconGap,
+                    h - statusIconGap - 6 - Math.ceil(Math.min(simDeviceState.wip, 12) / 6) * 8,
+                    wipColors
+                  )}
+                </g>
+              );
+            })()}
+            {simDeviceState.wait_transport > 0 && (() => {
+              const wfdColors = Object.values(simulation.process_products)
+                .filter(pp => pp.current_node_id === device.id && pp.status === 'WaitingForTransport')
+                .sort((a, b) => {
+                  const aVisit = a.node_visits.find(v => v.node_id === device.id);
+                  const bVisit = b.node_visits.find(v => v.node_id === device.id);
+                  return (aVisit?.arrive_time_s ?? 0) - (bVisit?.arrive_time_s ?? 0);
+                })
+                .map(pp => getProductColor(pp.product_code));
+              return (
+                <g>
+                  {renderWipIndicators(
+                    simDeviceState.wait_transport,
+                    w - statusIconGap - Math.min(simDeviceState.wait_transport, 6) * 8 + 2,
+                    h - statusIconGap - 6 - Math.ceil(Math.min(simDeviceState.wait_transport, 12) / 6) * 8,
+                    wfdColors
+                  )}
+                </g>
+              );
+            })()}
             {(() => {
               const elapsed = simulation.elapsed_s;
               if (elapsed <= 0) return null;

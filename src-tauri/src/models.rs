@@ -56,7 +56,6 @@ pub enum IncomingRule {
 #[serde(rename_all = "snake_case")]
 pub enum CapacityMode {
     Fixed,
-    Dynamic,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]

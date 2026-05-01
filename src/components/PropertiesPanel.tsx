@@ -1900,32 +1900,19 @@ function BufferSettingsTab({ device, onChange }: { device: Buffer; onChange: (fi
   return (
     <div className="property-group">
       <div className="property-row">
-        <span className="property-label">容量模式</span>
-        <select
-          className="property-select"
-          value={device.capacity_mode}
-          onChange={(e) => onChange('capacity_mode', e.target.value)}
-        >
-          <option value="fixed">固定值</option>
-          <option value="dynamic">动态容量</option>
-        </select>
+        <span className="property-label">最大容量</span>
+        <input
+          type="number"
+          className="property-input"
+          value={device.max_capacity || ''}
+          onChange={(e) => {
+            const val = parseInt(e.target.value);
+            onChange('max_capacity', isNaN(val) ? null : val);
+          }}
+          min="1"
+        />
+        <span style={{ marginLeft: '4px', fontSize: '12px' }}>件</span>
       </div>
-      {device.capacity_mode === 'fixed' && (
-        <div className="property-row">
-          <span className="property-label">最大容量</span>
-          <input
-            type="number"
-            className="property-input"
-            value={device.max_capacity || ''}
-            onChange={(e) => {
-              const val = parseInt(e.target.value);
-              onChange('max_capacity', isNaN(val) ? null : val);
-            }}
-            min="1"
-          />
-          <span style={{ marginLeft: '4px', fontSize: '12px' }}>件</span>
-        </div>
-      )}
     </div>
   );
 }
