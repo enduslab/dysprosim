@@ -146,7 +146,7 @@ interface AppState {
   deleteAiAnalysisRecord: (recordId: string) => Promise<void>;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   canvas: {
     width_mm: 8000,
     height_mm: 8000,
@@ -278,7 +278,7 @@ export const useAppStore = create<AppState>((set) => ({
   }),
 
   handleNewCanvas: async () => {
-    const state = useAppStore.getState();
+    const state = get();
     const hasContent = Object.keys(state.canvas.devices).length > 0 || Object.keys(state.canvas.connections).length > 0;
     
     if (hasContent) {
@@ -331,6 +331,7 @@ export const useAppStore = create<AppState>((set) => ({
       historyIndex: -1,
       canUndo: false,
       canRedo: false,
+      aiAnalysisRecords: [],
     });
     const appWindow = getCurrentWindow();
     await appWindow.setTitle('DysProSim');
@@ -365,6 +366,7 @@ export const useAppStore = create<AppState>((set) => ({
           historyIndex: -1,
           canUndo: false,
           canRedo: false,
+          aiAnalysisRecords: [],
         }));
         const appWindow = getCurrentWindow();
         await appWindow.setTitle(`DysProSim - ${path}`);
@@ -375,7 +377,7 @@ export const useAppStore = create<AppState>((set) => ({
   },
 
   handleSaveLayout: async () => {
-    const state = useAppStore.getState();
+    const state = get();
     try {
       if (state.currentFilePath) {
         await invoke('save_layout', { path: state.currentFilePath });
@@ -1202,7 +1204,8 @@ export const useAppStore = create<AppState>((set) => ({
 
   loadAiAnalysisRecords: async () => {
     try {
-      const records = await invoke<AiAnalysisRecord[]>('get_ai_analysis_records');
+      const layoutPath = get().currentFilePath || '';
+      const records = await invoke<AiAnalysisRecord[]>('get_ai_analysis_records', { layoutPath });
       set({ aiAnalysisRecords: records });
     } catch (error) {
       console.error('Failed to load AI analysis records:', error);
@@ -1223,7 +1226,8 @@ export const useAppStore = create<AppState>((set) => ({
 
   saveAiAnalysisRecord: async (recordIds: string[], prompt: string, result: string, modelUsed: string) => {
     try {
-      const record = await invoke<AiAnalysisRecord>('save_ai_analysis_record', { recordIds, prompt, result, modelUsed });
+      const layoutPath = get().currentFilePath || '';
+      const record = await invoke<AiAnalysisRecord>('save_ai_analysis_record', { recordIds, layoutPath, prompt, result, modelUsed });
       set((state) => ({
         aiAnalysisRecords: [...state.aiAnalysisRecords, record],
       }));

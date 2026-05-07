@@ -332,6 +332,7 @@ interface AiAnalysisModalProps {
 
 export default function AiAnalysisModal({ onClose }: AiAnalysisModalProps) {
   const canvas = useAppStore((state) => state.canvas);
+  const currentFilePath = useAppStore((state) => state.currentFilePath);
   const callAiAnalysis = useAppStore((state) => state.callAiAnalysis);
   const saveAiAnalysisRecord = useAppStore((state) => state.saveAiAnalysisRecord);
   const deleteAiAnalysisRecord = useAppStore((state) => state.deleteAiAnalysisRecord);
@@ -354,7 +355,13 @@ export default function AiAnalysisModal({ onClose }: AiAnalysisModalProps) {
 
   useEffect(() => {
     loadAiAnalysisRecords();
-  }, []);
+    setAnalysisResult(null);
+    setAnalysisError(null);
+    setSelectedHistoryId(null);
+    setSelectedHistoryRecord(null);
+    setSelectedRecordIds([]);
+    setActiveTab('select');
+  }, [currentFilePath]);
 
   useEffect(() => {
     if (selectedHistoryId) {

@@ -578,6 +578,7 @@ export interface AiApiConfig {
 export interface AiAnalysisRecord {
   id: string;
   record_ids: string[];
+  layout_path: string;
   timestamp: string;
   prompt: string;
   result: string;
