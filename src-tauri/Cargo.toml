@@ -1,6 +1,6 @@
 [package]
 name = "dysprosim"
-version = "1.2.1"
+version = "1.3.0"
 description = "DysProSim - 离散生产与物流系统模拟工具"
 authors = ["上海云图数镜软件技术有限公司"]
 edition = "2021"

@@ -584,3 +584,41 @@ export interface AiAnalysisRecord {
   result: string;
   model_used: string;
 }
+
+export interface OptimizationChange {
+  type: string;
+  value: unknown;
+  device_id?: string;
+  field?: string;
+}
+
+export interface OptimizationSuggestion {
+  can_optimize: boolean;
+  should_continue: boolean;
+  changes: OptimizationChange[];
+  reasoning: string;
+}
+
+export interface OptimizationIteration {
+  iteration: number;
+  changes: OptimizationChange[];
+  applied_changes: string[];
+  reasoning: string;
+  completed_products: number;
+  max_total_wip: number;
+  product_avg_process_times: { product_code: string; product_name: string; avg_process_time_s: number }[];
+  is_improvement: boolean;
+  improvement_details: string[];
+  record_id?: string;
+  layout_snapshot?: CanvasState;
+  simulation_params_snapshot?: SimulationState;
+}
+
+export interface OptimizationResult {
+  iterations: OptimizationIteration[];
+  total_iterations: number;
+  best_iteration: number;
+  stopped_reason: string;
+  baseline_completed_products: number;
+  baseline_max_wip: number;
+}

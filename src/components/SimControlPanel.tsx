@@ -5,6 +5,7 @@ import { calculateConnectionLengthMm, calculateElbowIntermediatePoints, getDevic
 import ProductRoutesModal from './ProductRoutesModal';
 import ValidationErrorModal from './ValidationErrorModal';
 import AiAnalysisModal from './AiAnalysisModal';
+import AiOptimizationModal from './AiOptimizationModal';
 
 export default function SimControlPanel() {
   const simulation = useAppStore((state) => state.simulation);
@@ -52,6 +53,7 @@ export default function SimControlPanel() {
   const [showSettings, setShowSettings] = useState(false);
   const [showRuleHelp, setShowRuleHelp] = useState(false);
   const [showAiAnalysis, setShowAiAnalysis] = useState(false);
+  const [showAiOptimization, setShowAiOptimization] = useState(false);
   
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -489,6 +491,16 @@ export default function SimControlPanel() {
           <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '-0.5px' }}>AI</span>
         </button>
 
+        <button
+          className="sim-control-btn"
+          onClick={() => setShowAiOptimization(true)}
+          title="AI优化"
+          disabled={canvas.simulation_records.length === 0}
+          style={canvas.simulation_records.length === 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+        >
+          <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '-0.5px' }}>优化</span>
+        </button>
+
         <div className="sim-time">
           {formatTime(simulation.elapsed_s)} / {formatTime(simulation.duration_s)}
         </div>
@@ -667,6 +679,10 @@ export default function SimControlPanel() {
 
       {showAiAnalysis && (
         <AiAnalysisModal onClose={() => setShowAiAnalysis(false)} />
+      )}
+
+      {showAiOptimization && (
+        <AiOptimizationModal onClose={() => setShowAiOptimization(false)} />
       )}
     </div>
   );

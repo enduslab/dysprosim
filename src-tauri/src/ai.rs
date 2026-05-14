@@ -554,3 +554,190 @@ pub fn delete_ai_analysis_record(app: tauri::AppHandle, record_id: String) -> Re
 
     Ok(())
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptimizationChange {
+    #[serde(rename = "type")]
+    pub change_type: String,
+    pub value: serde_json::Value,
+    #[serde(default)]
+    pub device_id: Option<String>,
+    #[serde(default)]
+    pub field: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptimizationSuggestion {
+    pub can_optimize: bool,
+    pub should_continue: bool,
+    pub changes: Vec<OptimizationChange>,
+    pub reasoning: String,
+}
+
+fn build_optimization_prompt() -> String {
+    let simulation_control_items = r#"
+
+# 可调整的配置参数
+
+你可以建议调整以下参数来优化生产系统：
+
+## 全局策略参数
+- **resource_selection_rule**: 资源选择规则，可选值："basic"（基础规则）、"min_wip_dynamic"（最小在制品动态平衡）、"min_utilrate_dynamic"（最低利用率动态平衡）
+- **warehouse_selection_priorities**: 仓库选择优先级列表，可选值数组，按优先级从高到低排列，可选值："nearest_distance"、"farthest_distance"、"lowest_utilization"、"highest_utilization"、"product_concentrated"、"product_dispersed"、"least_waiting_entry"。注意冲突规则：距离最近与距离最远互斥、利用率最低与利用率最高互斥、按产品集中与按产品分散互斥
+- **product_selection_strategy**: 加工制品选择策略，可选值："first_come_first_served"（先到先生产）、"same_type_priority_with_tool"（同类优先兼顾工具）、"same_tool_priority"（同工具优先）
+- **consider_product_priority**: 是否考虑产品优先级，布尔值 true/false
+
+## 设备级参数
+- **仓库/临时堆场投放模式 (release_mode)**: 可选值："wait_for_idle"（等待空闲）、"immediate"（立即投放）
+- **缓冲区容量 (max_capacity)**: 正整数，设置缓冲区的最大容量
+- **产品优先级 (product_priority)**: 1-5的整数，1为最高优先级，5为最低优先级，null表示无优先级
+
+## 结构性调整
+- **添加缓冲区 (add_buffer)**: 在瓶颈设备前添加缓冲区，需要指定：upstream_device_id（上游设备ID）、downstream_device_id（瓶颈设备ID）、capacity（缓冲区容量）、product_code（产品编码）
+- **复制瓶颈节点 (clone_device)**: 复制瓶颈加工节点以增加产能，需要指定：device_id（要复制的设备ID）、count（复制数量，1-3）
+
+**注意：不能修改任何设备的加工时间参数，加工时间是物理约束。**
+"#;
+
+    format!(
+        "你是一个专业的离散生产系统优化专家。你将收到一份模拟运行数据报告，请分析当前生产系统的问题和瓶颈，并提出具体的配置优化建议。{}",
+        simulation_control_items
+    )
+}
+
+#[tauri::command]
+pub async fn call_ai_optimization(
+    app: tauri::AppHandle,
+    md_content: String,
+    iteration: usize,
+    max_iterations: usize,
+    previous_changes_json: Option<String>,
+) -> Result<String, String> {
+    let config = get_ai_api_config(app)?;
+
+    let (base_url, api_key, model) = if config.use_custom_api {
+        let base_url = config
+            .custom_base_url
+            .ok_or("未配置自定义API地址")?;
+        let model = config.custom_model.ok_or("未配置自定义模型名称")?;
+        (base_url, config.custom_api_key.unwrap_or_default(), model)
+    } else {
+        (
+            DEFAULT_OLLAMA_BASE_URL.to_string(),
+            String::new(),
+            DEFAULT_OLLAMA_MODEL.to_string(),
+        )
+    };
+
+    let url = format!(
+        "{}/chat/completions",
+        base_url.trim_end_matches('/')
+    );
+
+    let system_prompt = build_optimization_prompt();
+
+    let mut user_content = format!(
+        "这是第 {}/{} 次优化迭代。请分析以下模拟数据，判断是否还有优化空间，如果有，提出具体的配置调整建议。\n\n",
+        iteration, max_iterations
+    );
+
+    if let Some(ref prev) = previous_changes_json {
+        user_content.push_str(&format!("之前迭代已经做过的调整：{}\n\n", prev));
+    }
+
+    user_content.push_str(&md_content);
+
+    user_content.push_str(r#"
+
+请严格按照以下JSON格式返回你的分析和建议（不要包含其他文字，只返回JSON）：
+
+{
+  "can_optimize": true或false,
+  "should_continue": true或false,
+  "changes": [
+    {"type": "resource_selection_rule", "value": "min_wip_dynamic"},
+    {"type": "product_selection_strategy", "value": "same_tool_priority"},
+    {"type": "consider_product_priority", "value": true},
+    {"type": "warehouse_selection_priorities", "value": ["nearest_distance", "lowest_utilization"]},
+    {"type": "device_config", "device_id": "设备ID", "field": "release_mode", "value": "immediate"},
+    {"type": "product_priority", "device_id": "产品编码", "field": "priority", "value": 1},
+    {"type": "add_buffer", "value": {"upstream_device_id": "上游设备ID", "downstream_device_id": "下游瓶颈设备ID", "capacity": 10, "product_code": "产品编码"}},
+    {"type": "clone_device", "value": {"device_id": "要复制的设备ID", "count": 1}}
+  ],
+  "reasoning": "详细说明你的分析过程、发现的问题、建议的调整及预期效果"
+}
+
+说明：
+- can_optimize: 根据当前数据和可调参数，判断是否还有优化空间
+- should_continue: 是否建议继续下一轮优化迭代（当达到最大迭代次数时，如果认为还有优化空间设为true）
+- changes: 具体的配置调整列表，每项包含type和value
+- reasoning: 详细的分析说明
+
+如果判断无法再优化，返回：{"can_optimize": false, "should_continue": false, "changes": [], "reasoning": "说明原因"}
+
+重要要求：
+1. reasoning字段必须使用中文输出，不要使用英文。以下是参数的中英文对照，在推理中请使用中文名称：
+   - resource_selection_rule → 资源选择规则（basic→基础规则, min_wip_dynamic→最小在制品动态平衡, min_utilrate_dynamic→最低利用率动态平衡）
+   - product_selection_strategy → 加工制品选择策略（first_come_first_served→先到先生产, same_type_priority_with_tool→同类优先兼顾工具, same_tool_priority→同工具优先）
+   - consider_product_priority → 是否考虑产品优先级
+   - warehouse_selection_priorities → 仓库选择优先级（nearest_distance→距离最近, farthest_distance→距离最远, lowest_utilization→利用率最低, highest_utilization→利用率最高, product_concentrated→按产品集中, product_dispersed→按产品分散, least_waiting_entry→等待入库最少）
+   - device_config/release_mode → 投放模式（wait_for_idle→等待空闲, immediate→立即投放）
+   - device_config/max_capacity → 缓冲区容量
+   - add_buffer → 添加缓冲区
+   - clone_device → 复制瓶颈设备
+   - product_priority → 产品优先级
+2. 严禁编造或推测报告中不存在的数据。所有引用的数值必须来自提供的模拟数据报告，不得虚构任何指标数据。
+3. 分析必须基于报告中的实际数据，如果报告中没有某项数据，不要自行推测。
+4. 重要：报告中所有利用率（包括设备利用率、路径利用率等）的数值已经是百分比形式（范围0-100），不需要再乘以100。例如报告中显示利用率45.2，含义就是45.2%，不要理解为0.452%或将其转换为4520%。
+"#);
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(API_TIMEOUT_SECS))
+        .build()
+        .map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
+
+    let mut req_builder = client.post(&url).json(&ChatRequest {
+        model: model.clone(),
+        messages: vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: system_prompt,
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: user_content,
+            },
+        ],
+        stream: false,
+    });
+
+    if !api_key.is_empty() {
+        req_builder = req_builder.bearer_auth(&api_key);
+    }
+
+    let response = req_builder
+        .send()
+        .await
+        .map_err(|e| format!("请求AI服务失败: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("AI服务返回错误 (HTTP {}): {}", status, body));
+    }
+
+    let chat_response: ChatResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("解析AI响应失败: {}", e))?;
+
+    let result = chat_response
+        .choices
+        .first()
+        .ok_or("AI响应中没有返回结果")?
+        .message
+        .content
+        .clone();
+
+    Ok(result)
+}

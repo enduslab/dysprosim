@@ -963,7 +963,9 @@ pub struct CanvasState {
     pub materials: HashMap<String, Material>,
     pub tools: HashMap<String, Tool>,
     pub settings: Settings,
+    #[serde(default)]
     pub simulation_records: Vec<SimulationRecord>,
+    #[serde(rename = "device_connection_counter", default)]
     pub device_counters: HashMap<String, i32>,
     #[serde(default)]
     pub connection_counter: i32,
@@ -998,6 +1000,16 @@ impl Default for CanvasState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimulationParams {
+    pub resource_selection_rule: ResourceSelectionRule,
+    pub product_selection_strategy: ProductSelectionStrategy,
+    pub consider_product_priority: bool,
+    pub warehouse_selection_priorities: Vec<WarehouseSelectionPriority>,
+    pub utilization_sample_interval_s: f64,
+    pub simulation_mode: SimulationMode,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayoutData {
     pub canvas_width_mm: f64,
     pub canvas_height_mm: f64,
@@ -1009,6 +1021,8 @@ pub struct LayoutData {
     pub settings: Settings,
     #[serde(default)]
     pub simulation_records: Vec<SimulationRecord>,
+    #[serde(default)]
+    pub simulation_params: Option<SimulationParams>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

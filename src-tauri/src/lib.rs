@@ -73,6 +73,12 @@ pub fn run() {
             ai::get_ai_analysis_records,
             ai::save_ai_analysis_record,
             ai::delete_ai_analysis_record,
+            ai::call_ai_optimization,
+            commands::run_simulation_to_completion,
+            commands::apply_optimization_changes,
+            commands::set_canvas_state,
+            commands::save_canvas_state_to_path,
+            commands::write_text_to_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

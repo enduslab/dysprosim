@@ -21,6 +21,9 @@ import type {
   ProductSelectionStrategy,
   AiApiConfig,
   AiAnalysisRecord,
+  OptimizationSuggestion,
+  OptimizationIteration,
+  OptimizationResult,
 } from './types';
 
 interface AppState {
@@ -144,6 +147,256 @@ interface AppState {
   callAiAnalysis: (mdContent: string, recordCount: number) => Promise<string>;
   saveAiAnalysisRecord: (recordIds: string[], prompt: string, result: string, modelUsed: string) => Promise<AiAnalysisRecord>;
   deleteAiAnalysisRecord: (recordId: string) => Promise<void>;
+
+  showAiOptimizationModal: boolean;
+  openAiOptimizationModal: () => void;
+  closeAiOptimizationModal: () => void;
+  optimizationRunning: boolean;
+  optimizationResult: OptimizationResult | null;
+  optimizationCurrentIteration: number;
+  optimizationMaxIterations: number;
+  optimizationStatusMessage: string;
+  runAiOptimization: (maxIterations?: number) => Promise<void>;
+  cancelAiOptimization: () => void;
+}
+
+function extractJson(text: string): string {
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    return codeBlockMatch[1].trim();
+  }
+  const braceMatch = text.match(/\{[\s\S]*\}/);
+  if (braceMatch) {
+    return braceMatch[0];
+  }
+  return text;
+}
+
+const VALID_CHANGE_TYPES = [
+  'resource_selection_rule',
+  'product_selection_strategy',
+  'consider_product_priority',
+  'warehouse_selection_priorities',
+  'device_config',
+  'product_priority',
+  'add_buffer',
+  'clone_device',
+];
+
+const VALID_RULE_VALUES = ['basic', 'min_wip_dynamic', 'min_utilrate_dynamic'];
+const VALID_STRATEGY_VALUES = ['first_come_first_served', 'same_type_priority_with_tool', 'same_tool_priority'];
+const VALID_PRIORITY_VALUES = ['nearest_distance', 'farthest_distance', 'lowest_utilization', 'highest_utilization', 'product_concentrated', 'product_dispersed', 'least_waiting_entry'];
+const CONFLICTING_PRIORITIES: [string, string][] = [
+  ['nearest_distance', 'farthest_distance'],
+  ['farthest_distance', 'nearest_distance'],
+  ['lowest_utilization', 'highest_utilization'],
+  ['highest_utilization', 'lowest_utilization'],
+  ['product_concentrated', 'product_dispersed'],
+  ['product_dispersed', 'product_concentrated'],
+];
+
+function validateOptimizationSuggestion(data: unknown): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  if (typeof data !== 'object' || data === null) {
+    return { valid: false, errors: ['返回数据不是有效的JSON对象'] };
+  }
+
+  const obj = data as Record<string, unknown>;
+
+  if (typeof obj.can_optimize !== 'boolean') {
+    errors.push('can_optimize 字段缺失或不是布尔值');
+  }
+
+  if (typeof obj.should_continue !== 'boolean') {
+    errors.push('should_continue 字段缺失或不是布尔值');
+  }
+
+  if (typeof obj.reasoning !== 'string') {
+    errors.push('reasoning 字段缺失或不是字符串');
+  }
+
+  if (!Array.isArray(obj.changes)) {
+    errors.push('changes 字段缺失或不是数组');
+  } else {
+    for (let i = 0; i < obj.changes.length; i++) {
+      const change = obj.changes[i] as Record<string, unknown>;
+      if (!change || typeof change !== 'object') {
+        errors.push(`changes[${i}] 不是有效的对象`);
+        continue;
+      }
+
+      if (typeof change.type !== 'string' || !VALID_CHANGE_TYPES.includes(change.type)) {
+        errors.push(`changes[${i}].type 无效，必须是以下之一: ${VALID_CHANGE_TYPES.join(', ')}`);
+      }
+
+      if (change.value === undefined || change.value === null) {
+        errors.push(`changes[${i}].value 缺失`);
+        continue;
+      }
+
+      switch (change.type) {
+        case 'resource_selection_rule':
+          if (typeof change.value !== 'string' || !VALID_RULE_VALUES.includes(change.value)) {
+            errors.push(`changes[${i}].value 无效，必须是: ${VALID_RULE_VALUES.join(', ')}`);
+          }
+          break;
+        case 'product_selection_strategy':
+          if (typeof change.value !== 'string' || !VALID_STRATEGY_VALUES.includes(change.value)) {
+            errors.push(`changes[${i}].value 无效，必须是: ${VALID_STRATEGY_VALUES.join(', ')}`);
+          }
+          break;
+        case 'consider_product_priority':
+          if (typeof change.value !== 'boolean') {
+            errors.push(`changes[${i}].value 必须是布尔值`);
+          }
+          break;
+        case 'warehouse_selection_priorities': {
+          if (!Array.isArray(change.value)) {
+            errors.push(`changes[${i}].value 必须是数组`);
+          } else {
+            const invalidItems = (change.value as string[]).filter(v => !VALID_PRIORITY_VALUES.includes(v));
+            if (invalidItems.length > 0) {
+              errors.push(`changes[${i}].value 包含无效值: ${invalidItems.join(', ')}`);
+            }
+            for (const [a, b] of CONFLICTING_PRIORITIES) {
+              if ((change.value as string[]).includes(a) && (change.value as string[]).includes(b)) {
+                errors.push(`changes[${i}].value 包含冲突的优先级: ${a} 和 ${b}`);
+              }
+            }
+          }
+          break;
+        }
+        case 'device_config':
+          if (typeof change.device_id !== 'string' || !change.device_id) {
+            errors.push(`changes[${i}].device_id 缺失`);
+          }
+          if (typeof change.field !== 'string' || !change.field) {
+            errors.push(`changes[${i}].field 缺失`);
+          }
+          if (change.field === 'release_mode' && typeof change.value === 'string' && !['immediate', 'wait_for_idle'].includes(change.value)) {
+            errors.push(`changes[${i}].value 无效，release_mode 必须是: immediate, wait_for_idle`);
+          }
+          if (change.field === 'max_capacity' && (typeof change.value !== 'number' || change.value <= 0 || !Number.isInteger(change.value))) {
+            errors.push(`changes[${i}].value 无效，max_capacity 必须是正整数`);
+          }
+          break;
+        case 'product_priority':
+          if (typeof change.device_id !== 'string' || !change.device_id) {
+            errors.push(`changes[${i}].device_id (产品编码) 缺失`);
+          }
+          if (change.value !== null && (typeof change.value !== 'number' || ![1, 2, 3, 4, 5].includes(change.value))) {
+            errors.push(`changes[${i}].value 无效，优先级必须是1-5的整数或null`);
+          }
+          break;
+        case 'add_buffer': {
+          const v = change.value as Record<string, unknown>;
+          if (!v || typeof v !== 'object') {
+            errors.push(`changes[${i}].value 必须是对象`);
+          } else {
+            if (typeof v.upstream_device_id !== 'string' || !v.upstream_device_id) {
+              errors.push(`changes[${i}].value.upstream_device_id 缺失`);
+            }
+            if (typeof v.downstream_device_id !== 'string' || !v.downstream_device_id) {
+              errors.push(`changes[${i}].value.downstream_device_id 缺失`);
+            }
+            if (typeof v.capacity !== 'number' || v.capacity <= 0 || !Number.isInteger(v.capacity)) {
+              errors.push(`changes[${i}].value.capacity 必须是正整数`);
+            }
+            if (typeof v.product_code !== 'string' || !v.product_code) {
+              errors.push(`changes[${i}].value.product_code 缺失`);
+            }
+          }
+          break;
+        }
+        case 'clone_device': {
+          const v = change.value as Record<string, unknown>;
+          if (!v || typeof v !== 'object') {
+            errors.push(`changes[${i}].value 必须是对象`);
+          } else {
+            if (typeof v.device_id !== 'string' || !v.device_id) {
+              errors.push(`changes[${i}].value.device_id 缺失`);
+            }
+            if (typeof v.count !== 'number' || v.count < 1 || v.count > 3 || !Number.isInteger(v.count)) {
+              errors.push(`changes[${i}].value.count 必须是1-3的整数`);
+            }
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  if (obj.can_optimize === true && Array.isArray(obj.changes) && obj.changes.length === 0) {
+    errors.push('can_optimize 为 true 但 changes 为空');
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+function generateOptimizationMd(record: SimulationRecord, canvas: { products: Record<string, { name: string; color: string }>; materials: Record<string, { name: string; unit: string }>; devices: Record<string, { type: string; name: string }> }): string {
+  const results = record.results;
+
+  let md = `# 模拟运行统计报告\n\n`;
+  md += `> 记录时间: ${new Date(record.timestamp).toLocaleString()}\n\n`;
+
+  md += `## 总体指标\n\n`;
+  md += `- 模拟时长: ${results.duration_s.toFixed(1)}s\n`;
+  md += `- 完成产品数: ${results.completed_products}\n`;
+  md += `- 最大在制品数(WIP): ${results.max_total_wip}\n`;
+  md += `- 模拟模式: ${results.simulation_mode === 'fixed_output' ? '固定产量' : '固定时长'}\n`;
+  md += `- 资源选择规则: ${results.resource_selection_rule || 'basic'}\n`;
+  md += `- 加工制品选择策略: ${results.product_selection_strategy || 'first_come_first_served'}\n`;
+  md += `- 考虑产品优先级: ${results.consider_product_priority ? '是' : '否'}\n`;
+
+  if (results.warehouse_selection_priorities && results.warehouse_selection_priorities.length > 0) {
+    md += `- 仓库选择优先级: ${results.warehouse_selection_priorities.join(', ')}\n`;
+  }
+
+  md += `\n## 产品完成情况\n\n`;
+  if (results.completed_products_by_code) {
+    md += `| 产品编码 | 产品名称 | 完成数量 |\n|---------|---------|--------|\n`;
+    for (const [code, count] of Object.entries(results.completed_products_by_code)) {
+      const productName = canvas.products[code]?.name || code;
+      md += `| ${code} | ${productName} | ${count} |\n`;
+    }
+  }
+
+  md += `\n## 设备利用率\n\n`;
+  md += `| 设备ID | 设备名称 | 完成数 | 利用率 | 最大WIP | 最大等待运输 |\n|-------|---------|-------|-------|--------|------------|\n`;
+  for (const stat of results.device_stats) {
+    const name = canvas.devices[stat.device_id]?.name || stat.device_name;
+    md += `| ${stat.device_id} | ${name} | ${stat.completed} | ${stat.utilization.toFixed(1)}% | ${stat.max_wip} | ${stat.max_wait_transport} |\n`;
+  }
+
+  md += `\n## 产品平均加工时间\n\n`;
+  if (results.product_avg_process_times && results.product_avg_process_times.length > 0) {
+    md += `| 产品 | 平均加工时间 |\n|------|------------|\n`;
+    for (const pt of results.product_avg_process_times) {
+      md += `| ${pt.product_name || pt.product_code} | ${pt.avg_process_time_s.toFixed(3)}s |\n`;
+    }
+  }
+
+  md += `\n## 仓库/缓冲区状态\n\n`;
+  if (results.storage_stats && results.storage_stats.length > 0) {
+    md += `| 设备ID | 仓库名称 | 当前库存 | 容量 | 最大库存 | 最大等待入库 |\n|-------|---------|---------|------|---------|------------|\n`;
+    for (const stat of results.storage_stats) {
+      const name = canvas.devices[stat.device_id]?.name || stat.device_name;
+      md += `| ${stat.device_id} | ${name} | ${stat.stock} | ${stat.capacity} | ${stat.max_stock ?? '-'} | ${stat.max_waiting_entry ?? '-'} |\n`;
+    }
+  }
+
+  md += `\n## 运输路径利用率\n\n`;
+  if (results.connection_stats && results.connection_stats.length > 0) {
+    md += `| 路径名称 | 运输次数 | 利用率 | 从(设备ID) | 到(设备ID) |\n|---------|---------|-------|----------|----------|\n`;
+    for (const stat of results.connection_stats) {
+      const fromName = canvas.devices[stat.from_device]?.name || stat.from_device;
+      const toName = canvas.devices[stat.to_device]?.name || stat.to_device;
+      md += `| ${stat.connection_name} | ${stat.transport_count} | ${stat.utilization.toFixed(1)}% | ${fromName}(${stat.from_device}) | ${toName}(${stat.to_device}) |\n`;
+    }
+  }
+
+  return md;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -1247,5 +1500,289 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (error) {
       console.error('Failed to delete AI analysis record:', error);
     }
+  },
+
+  showAiOptimizationModal: false,
+  openAiOptimizationModal: () => set({ showAiOptimizationModal: true }),
+  closeAiOptimizationModal: () => set({ showAiOptimizationModal: false, optimizationRunning: false }),
+  optimizationRunning: false,
+  optimizationResult: null,
+  optimizationCurrentIteration: 0,
+  optimizationMaxIterations: 5,
+  optimizationStatusMessage: '',
+  cancelAiOptimization: () => set({ optimizationRunning: false, optimizationStatusMessage: '用户取消优化' }),
+
+  runAiOptimization: async (maxIterations: number = 5) => {
+    const records = await get().getSimulationRecords();
+    if (records.length === 0) {
+      set({ optimizationStatusMessage: '没有模拟记录，请先运行模拟并保存记录' });
+      return;
+    }
+
+    const latestRecord = records[records.length - 1];
+    const baselineCompletedProducts = latestRecord.results.completed_products;
+    const baselineMaxWip = latestRecord.results.max_total_wip;
+    const baselineAvgTimes = latestRecord.results.product_avg_process_times || [];
+
+    const iterations: OptimizationIteration[] = [];
+    let bestIteration = 0;
+    let stoppedReason = '';
+    let cancelled = false;
+
+    set({
+      optimizationRunning: true,
+      optimizationResult: null,
+      optimizationCurrentIteration: 0,
+      optimizationMaxIterations: maxIterations,
+      optimizationStatusMessage: '开始AI优化...',
+    });
+
+    const baselineCanvasSnapshot = JSON.parse(JSON.stringify(get().canvas)) as CanvasState;
+    let baselineSimState: SimulationState | undefined;
+    try {
+      baselineSimState = await invoke<SimulationState>('get_simulation_state');
+    } catch {
+      baselineSimState = undefined;
+    }
+
+    try {
+      for (let i = 1; i <= maxIterations; i++) {
+        if (!get().optimizationRunning) {
+          cancelled = true;
+          stoppedReason = '用户取消优化';
+          break;
+        }
+
+        set({ optimizationCurrentIteration: i, optimizationStatusMessage: `第 ${i}/${maxIterations} 次迭代：AI分析中...` });
+
+        const currentRecords = await get().getSimulationRecords();
+        const currentRecord = currentRecords.length > 0 ? currentRecords[currentRecords.length - 1] : null;
+        if (!currentRecord) {
+          stoppedReason = '没有可用的模拟记录';
+          break;
+        }
+
+        const currentCanvas = get().canvas;
+        const canvasData = {
+          products: currentCanvas.products,
+          materials: currentCanvas.materials,
+          devices: currentCanvas.devices,
+        };
+        const mdContent = generateOptimizationMd(currentRecord, canvasData);
+
+        const previousChanges = iterations.map(it => ({
+          iteration: it.iteration,
+          changes: it.applied_changes,
+          is_improvement: it.is_improvement,
+          improvement_details: it.improvement_details,
+          completed_products: it.completed_products,
+          max_total_wip: it.max_total_wip,
+        }));
+        const previousChangesJson = JSON.stringify(previousChanges);
+
+        let aiResponse: string;
+        try {
+          aiResponse = await invoke<string>('call_ai_optimization', {
+            mdContent,
+            iteration: i,
+            maxIterations,
+            previousChangesJson,
+          });
+        } catch (error) {
+          stoppedReason = `AI分析失败: ${error}`;
+          break;
+        }
+
+        let suggestion: OptimizationSuggestion | null = null;
+        let lastValidationErrors: string[] = [];
+        const MAX_JSON_RETRIES = 10;
+
+        for (let retry = 0; retry < MAX_JSON_RETRIES; retry++) {
+          let parsed: unknown;
+          try {
+            const jsonStr = extractJson(aiResponse);
+            parsed = JSON.parse(jsonStr);
+          } catch (parseError) {
+            lastValidationErrors = [`JSON解析失败: ${parseError}`];
+          }
+
+          if (parsed !== undefined) {
+            const validation = validateOptimizationSuggestion(parsed);
+            if (validation.valid) {
+              suggestion = parsed as OptimizationSuggestion;
+              break;
+            }
+            lastValidationErrors = validation.errors;
+          }
+
+          if (retry < MAX_JSON_RETRIES - 1) {
+            set({ optimizationStatusMessage: `第 ${i}/${maxIterations} 次迭代：AI返回格式有误，正在重新生成 (${retry + 2}/${MAX_JSON_RETRIES})...` });
+
+            const errorFeedback = `你上一次返回的JSON格式有误，错误如下：\n${lastValidationErrors.map((e, idx) => `${idx + 1}. ${e}`).join('\n')}\n\n请严格按照要求的JSON格式重新生成，确保：\n- can_optimize 和 should_continue 是布尔值\n- changes 是数组，每个元素有 type 和 value 字段\n- type 必须是: ${VALID_CHANGE_TYPES.join(', ')}\n- value 的格式必须与 type 匹配\n- 不要包含任何JSON之外的文字\n\n请直接返回修正后的JSON：`;
+
+            try {
+              aiResponse = await invoke<string>('call_ai_optimization', {
+                mdContent: errorFeedback,
+                iteration: i,
+                maxIterations,
+                previousChangesJson,
+              });
+            } catch (error) {
+              stoppedReason = `AI重新生成失败: ${error}`;
+              break;
+            }
+          }
+        }
+
+        if (stoppedReason) break;
+
+        if (!suggestion) {
+          stoppedReason = `AI返回JSON格式验证失败（已重试${MAX_JSON_RETRIES}次），主要错误: ${lastValidationErrors.slice(0, 3).join('; ')}`;
+          break;
+        }
+
+        if (!suggestion.can_optimize || suggestion.changes.length === 0) {
+          stoppedReason = suggestion.reasoning || 'AI判断无法继续优化';
+          break;
+        }
+
+        set({ optimizationStatusMessage: `第 ${i}/${maxIterations} 次迭代：应用配置变更...` });
+
+        let appliedChanges: string[];
+        try {
+          appliedChanges = await invoke<string[]>('apply_optimization_changes', {
+            changes: suggestion.changes,
+          });
+        } catch (error) {
+          stoppedReason = `应用配置变更失败: ${error}`;
+          break;
+        }
+
+        await get().loadCanvasState();
+
+        const currentSimState = await invoke<SimulationState>('get_simulation_state');
+
+        set({ optimizationStatusMessage: `第 ${i}/${maxIterations} 次迭代：运行模拟...` });
+
+        let simResults: SimulationResults;
+        try {
+          simResults = await invoke<SimulationResults>('run_simulation_to_completion');
+        } catch (error) {
+          stoppedReason = `模拟运行失败: ${error}`;
+          break;
+        }
+
+        const currentCompletedProducts = simResults.completed_products;
+        const currentMaxWip = simResults.max_total_wip;
+        const currentAvgTimes = simResults.product_avg_process_times || [];
+
+        const improvementDetails: string[] = [];
+        let isImprovement = false;
+
+        const prevCompleted = iterations.length > 0 ? iterations[iterations.length - 1].completed_products : baselineCompletedProducts;
+        const prevMaxWip = iterations.length > 0 ? iterations[iterations.length - 1].max_total_wip : baselineMaxWip;
+        const prevAvgTimes = iterations.length > 0 ? iterations[iterations.length - 1].product_avg_process_times : baselineAvgTimes;
+
+        if (currentCompletedProducts > prevCompleted) {
+          isImprovement = true;
+          improvementDetails.push(`完成产品数: ${prevCompleted} → ${currentCompletedProducts} (+${currentCompletedProducts - prevCompleted})`);
+        }
+        if (currentMaxWip < prevMaxWip) {
+          isImprovement = true;
+          improvementDetails.push(`最大在制品数: ${prevMaxWip} → ${currentMaxWip} (-${prevMaxWip - currentMaxWip})`);
+        }
+
+        for (const cur of currentAvgTimes) {
+          const prev = prevAvgTimes.find(p => p.product_code === cur.product_code);
+          if (prev && cur.avg_process_time_s < prev.avg_process_time_s) {
+            isImprovement = true;
+            improvementDetails.push(`${cur.product_name || cur.product_code} 平均加工时间: ${prev.avg_process_time_s.toFixed(2)}s → ${cur.avg_process_time_s.toFixed(2)}s`);
+          }
+        }
+
+        let recordId: string | undefined;
+        const currentCanvasState = get().canvas;
+
+        if (isImprovement) {
+          try {
+            recordId = await invoke<string>('save_simulation_record');
+            await get().loadCanvasState();
+          } catch {
+            recordId = undefined;
+          }
+        } else {
+          const lastGoodIteration = [...iterations].reverse().find(it => it.is_improvement);
+          const rollbackSnapshot = lastGoodIteration?.layout_snapshot || baselineCanvasSnapshot;
+          const rollbackSimState = lastGoodIteration?.simulation_params_snapshot || baselineSimState;
+          try {
+            await invoke('set_canvas_state', { canvasState: JSON.parse(JSON.stringify(rollbackSnapshot)) });
+            if (rollbackSimState) {
+              await invoke('set_resource_selection_rule', { rule: rollbackSimState.resource_selection_rule });
+              await invoke('set_product_selection_strategy', { strategy: rollbackSimState.product_selection_strategy });
+              await invoke('set_warehouse_selection_priorities', { priorities: rollbackSimState.warehouse_selection_priorities || [] });
+              await invoke('set_consider_product_priority', { consider: rollbackSimState.consider_product_priority ?? false });
+              await invoke('set_utilization_sample_interval', { intervalS: rollbackSimState.utilization_sample_interval_s || 1.0 });
+              if (rollbackSimState.simulation_mode) {
+                await invoke('set_simulation_mode', { mode: rollbackSimState.simulation_mode });
+              }
+            }
+            await get().loadCanvasState();
+          } catch {
+            // ignore rollback errors
+          }
+        }
+
+        const iteration: OptimizationIteration = {
+          iteration: i,
+          changes: suggestion.changes,
+          applied_changes: appliedChanges,
+          reasoning: suggestion.reasoning,
+          completed_products: currentCompletedProducts,
+          max_total_wip: currentMaxWip,
+          product_avg_process_times: currentAvgTimes,
+          is_improvement: isImprovement,
+          improvement_details: improvementDetails,
+          record_id: recordId,
+          layout_snapshot: isImprovement ? JSON.parse(JSON.stringify(currentCanvasState)) as CanvasState : undefined,
+          simulation_params_snapshot: isImprovement ? JSON.parse(JSON.stringify(currentSimState)) as SimulationState : undefined,
+        };
+
+        iterations.push(iteration);
+
+        if (isImprovement) {
+          bestIteration = i;
+        }
+
+        if (i >= maxIterations) {
+          if (suggestion.should_continue) {
+            stoppedReason = `已达到最大迭代次数(${maxIterations})，AI建议可继续优化`;
+          } else {
+            stoppedReason = `已达到最大迭代次数(${maxIterations})`;
+          }
+          break;
+        }
+      }
+
+      if (!stoppedReason && !cancelled) {
+        stoppedReason = '优化完成';
+      }
+    } catch (error) {
+      stoppedReason = `优化过程出错: ${error}`;
+    }
+
+    const result: OptimizationResult = {
+      iterations,
+      total_iterations: iterations.length,
+      best_iteration: bestIteration,
+      stopped_reason: stoppedReason,
+      baseline_completed_products: baselineCompletedProducts,
+      baseline_max_wip: baselineMaxWip,
+    };
+
+    set({
+      optimizationRunning: false,
+      optimizationResult: result,
+      optimizationStatusMessage: stoppedReason,
+    });
   },
 }));

@@ -20,6 +20,500 @@ pub fn set_canvas_size(state: State<'_, AppState>, width_mm: f64, height_mm: f64
 }
 
 #[tauri::command]
+pub fn set_canvas_state(state: State<'_, AppState>, canvas_state: CanvasState) -> Result<(), String> {
+    let mut canvas = state.canvas.lock().map_err(|e| e.to_string())?;
+    *canvas = canvas_state;
+    Ok(())
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct OptimizationChangeInput {
+    #[serde(rename = "type")]
+    pub change_type: String,
+    pub value: serde_json::Value,
+    #[serde(default)]
+    pub device_id: Option<String>,
+    #[serde(default)]
+    pub field: Option<String>,
+}
+
+#[tauri::command]
+pub fn apply_optimization_changes(
+    state: State<'_, AppState>,
+    changes: Vec<OptimizationChangeInput>,
+) -> Result<Vec<String>, String> {
+    let mut canvas = state.canvas.lock().map_err(|e| e.to_string())?;
+    let mut applied: Vec<String> = Vec::new();
+
+    for change in changes {
+        match change.change_type.as_str() {
+            "resource_selection_rule" => {
+                if let Some(v) = change.value.as_str() {
+                    let rule = match v {
+                        "basic" => ResourceSelectionRule::Basic,
+                        "min_wip_dynamic" => ResourceSelectionRule::MinWipDynamic,
+                        "min_utilrate_dynamic" => ResourceSelectionRule::MinUtilrateDynamic,
+                        _ => continue,
+                    };
+                    let mut simulation = state.simulation.lock().map_err(|e| e.to_string())?;
+                    simulation.set_resource_selection_rule(rule);
+                    drop(simulation);
+                    applied.push(format!("资源选择规则 → {}", match v {
+                        "basic" => "基础",
+                        "min_wip_dynamic" => "最小在制品(动态)",
+                        "min_utilrate_dynamic" => "最低利用率(动态)",
+                        other => other,
+                    }));
+                }
+            }
+            "product_selection_strategy" => {
+                if let Some(v) = change.value.as_str() {
+                    let strategy = match v {
+                        "first_come_first_served" => ProductSelectionStrategy::FirstComeFirstServed,
+                        "same_type_priority_with_tool" => ProductSelectionStrategy::SameTypePriorityWithTool,
+                        "same_tool_priority" => ProductSelectionStrategy::SameToolPriority,
+                        _ => continue,
+                    };
+                    let mut simulation = state.simulation.lock().map_err(|e| e.to_string())?;
+                    simulation.set_product_selection_strategy(strategy);
+                    drop(simulation);
+                    applied.push(format!("加工制品选择策略 → {}", match v {
+                        "first_come_first_served" => "先到先服务",
+                        "same_type_priority_with_tool" => "同类优先兼顾工具",
+                        "same_tool_priority" => "同工具优先",
+                        other => other,
+                    }));
+                }
+            }
+            "consider_product_priority" => {
+                let consider = change.value.as_bool().unwrap_or(false);
+                let mut simulation = state.simulation.lock().map_err(|e| e.to_string())?;
+                simulation.set_consider_product_priority(consider);
+                drop(simulation);
+                applied.push(format!("考虑产品优先级 → {}", if consider { "是" } else { "否" }));
+            }
+            "warehouse_selection_priorities" => {
+                if let Some(arr) = change.value.as_array() {
+                    let mut priorities: Vec<WarehouseSelectionPriority> = Vec::new();
+                    for item in arr {
+                        if let Some(s) = item.as_str() {
+                            let p = match s {
+                                "nearest_distance" => WarehouseSelectionPriority::NearestDistance,
+                                "farthest_distance" => WarehouseSelectionPriority::FarthestDistance,
+                                "lowest_utilization" => WarehouseSelectionPriority::LowestUtilization,
+                                "highest_utilization" => WarehouseSelectionPriority::HighestUtilization,
+                                "product_concentrated" => WarehouseSelectionPriority::ProductConcentrated,
+                                "product_dispersed" => WarehouseSelectionPriority::ProductDispersed,
+                                "least_waiting_entry" => WarehouseSelectionPriority::LeastWaitingEntry,
+                                _ => continue,
+                            };
+                            priorities.push(p);
+                        }
+                    }
+                    let mut simulation = state.simulation.lock().map_err(|e| e.to_string())?;
+                    simulation.set_warehouse_selection_priorities(priorities);
+                    drop(simulation);
+                    let labels: Vec<String> = arr.iter().filter_map(|v| v.as_str()).map(|s| match s {
+                        "nearest_distance" => "距离最近",
+                        "farthest_distance" => "距离最远",
+                        "lowest_utilization" => "利用率最低",
+                        "highest_utilization" => "利用率最高",
+                        "product_concentrated" => "按产品集中",
+                        "product_dispersed" => "按产品分散",
+                        "least_waiting_entry" => "等待入库最少",
+                        other => other,
+                    }.to_string()).collect();
+                    applied.push(format!("仓库选择优先级 → [{}]", labels.join(", ")));
+                }
+            }
+            "device_config" => {
+                if let (Some(ref device_id), Some(ref field)) = (change.device_id, change.field) {
+                    if let Some(device) = canvas.devices.get(device_id).cloned() {
+                        let device_name = device.name().to_string();
+                        let field_label = match field.as_str() {
+                            "release_mode" => "投放模式",
+                            "max_capacity" => "缓冲区容量",
+                            other => other,
+                        };
+                        let value_label = match field.as_str() {
+                            "release_mode" => match change.value.as_str() {
+                                Some("immediate") => "立即投放".to_string(),
+                                Some("wait_for_idle") => "等待空闲".to_string(),
+                                other => other.unwrap_or("?").to_string(),
+                            },
+                            "max_capacity" => change.value.to_string(),
+                            _ => change.value.to_string(),
+                        };
+                        let updated = apply_device_field_change(&device, field, &change.value);
+                        canvas.devices.insert(device_id.clone(), updated);
+                        applied.push(format!("设备[{}] {} → {}", device_name, field_label, value_label));
+                    }
+                }
+            }
+            "product_priority" => {
+                if let Some(ref product_code) = change.device_id {
+                    if let Some(product) = canvas.products.get(product_code).cloned() {
+                        let product_name = product.name.clone();
+                        let priority = if change.value.is_null() {
+                            None
+                        } else {
+                            change.value.as_i64().map(|v| v as i32)
+                        };
+                        let updated_product = Product {
+                            priority,
+                            ..product
+                        };
+                        canvas.products.insert(product_code.clone(), updated_product);
+                        let priority_label = priority.map(|p| p.to_string()).unwrap_or_else(|| "无".to_string());
+                        applied.push(format!("产品[{}] 优先级 → {}", product_name, priority_label));
+                    }
+                }
+            }
+            "add_buffer" => {
+                if let Some(obj) = change.value.as_object() {
+                    let upstream_id = obj.get("upstream_device_id").and_then(|v| v.as_str()).unwrap_or("");
+                    let downstream_id = obj.get("downstream_device_id").and_then(|v| v.as_str()).unwrap_or("");
+                    let capacity = obj.get("capacity").and_then(|v| v.as_i64()).unwrap_or(10) as i32;
+                    let product_code = obj.get("product_code").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+                    if upstream_id.is_empty() || downstream_id.is_empty() {
+                        applied.push(format!("⚠ 添加缓冲区跳过：上游设备ID或下游设备ID为空"));
+                    } else {
+                        let upstream = canvas.devices.get(upstream_id);
+                        let downstream = canvas.devices.get(downstream_id);
+
+                        if let (Some(_up_dev), Some(down_dev)) = (upstream, downstream) {
+                            let upstream_name = _up_dev.name().to_string();
+                            let downstream_name = down_dev.name().to_string();
+                            let (down_x, down_y) = down_dev.position();
+                            let buf_x = down_x;
+                            let buf_y = down_y + 200.0;
+
+                            let counter = canvas.device_counters.entry("BUF".to_string()).or_insert(0);
+                            *counter += 1;
+                            let buf_id = format!("BUF{:03}", counter);
+                            let buf_name = format!("缓冲区{:03}", counter);
+
+                            let product = canvas.products.get(&product_code);
+                            let product_name = product.map(|p| p.name.clone()).unwrap_or_default();
+                            let product_color = product.map(|p| p.color.clone()).unwrap_or("#4CAF50".to_string());
+
+                            let mut params = HashMap::new();
+                            params.insert("width".to_string(), 200.0);
+                            params.insert("height".to_string(), 100.0);
+                            params.insert("rotation_deg".to_string(), 0.0);
+
+                            let buffer = Device::Buffer(Buffer {
+                                base: DeviceBase {
+                                    id: buf_id.clone(),
+                                    shape_type: ShapeType::Rect,
+                                    x_mm: buf_x,
+                                    y_mm: buf_y,
+                                    params,
+                                    fill: product_color.clone(),
+                                    outline: "#333333".to_string(),
+                                    equip_id: String::new(),
+                                    name: buf_name.clone(),
+                                    desc: String::new(),
+                                    tag: String::new(),
+                                    workshop_id: None,
+                                    workshop_top: None,
+                                    workshop_bottom: None,
+                                    workshop_left: None,
+                                    workshop_right: None,
+                                },
+                                product_code: product_code.clone(),
+                                product_name,
+                                product_color,
+                                capacity_mode: CapacityMode::Fixed,
+                                max_capacity: Some(capacity),
+                                buffer_duration_s: None,
+                                current_stock: 0,
+                                start_node_ids: String::new(),
+                                processable_products: vec![],
+                            });
+
+                            canvas.devices.insert(buf_id.clone(), buffer);
+
+                            let old_conns: Vec<Connection> = canvas.connections.values()
+                                .filter(|c| c.from_device_id == upstream_id && c.to_device_id == downstream_id)
+                                .cloned()
+                                .collect();
+
+                            for old_conn in &old_conns {
+                                canvas.connections.remove(&old_conn.id);
+                            }
+
+                            let old_conn_ref = old_conns.first();
+                            let transport_speed = old_conn_ref.map(|c| c.transport_speed_mps).unwrap_or(1.0);
+                            let transport_mode = old_conn_ref.map(|c| c.transport_mode.clone()).unwrap_or(TransportMode::Continuous);
+                            let max_transport_count = old_conn_ref.map(|c| c.max_transport_count).unwrap_or(1);
+                            let unlimited_transport = old_conn_ref.map(|c| c.unlimited_transport).unwrap_or(true);
+                            let cart_count = old_conn_ref.map(|c| c.cart_count).unwrap_or(1);
+                            let cart_capacity = old_conn_ref.map(|c| c.cart_capacity).unwrap_or(1);
+                            let continuous_transport = old_conn_ref.map(|c| c.continuous_transport).unwrap_or(true);
+
+                            canvas.connection_counter += 1;
+                            let conn1_id = format!("PATH{:03}", canvas.connection_counter);
+                            let conn1 = Connection {
+                                id: conn1_id.clone(),
+                                from_device_id: upstream_id.to_string(),
+                                from_anchor_index: old_conn_ref.map(|c| c.from_anchor_index).unwrap_or(0),
+                                to_device_id: buf_id.clone(),
+                                to_anchor_index: 0,
+                                name: format!("路径{:03}", canvas.connection_counter),
+                                length_mm: None,
+                                auto_chain: true,
+                                continuous_transport,
+                                is_end_link: false,
+                                transport_speed_mps: transport_speed,
+                                transport_mode: transport_mode.clone(),
+                                max_transport_count,
+                                unlimited_transport,
+                                cart_count,
+                                cart_capacity,
+                                line_style: LineStyle::Straight,
+                                curve_control_x: None,
+                                curve_control_y: None,
+                                intermediate_points: vec![],
+                                elbow_offset: None,
+                            };
+                            canvas.connections.insert(conn1_id, conn1);
+
+                            canvas.connection_counter += 1;
+                            let conn2_id = format!("PATH{:03}", canvas.connection_counter);
+                            let conn2 = Connection {
+                                id: conn2_id.clone(),
+                                from_device_id: buf_id.clone(),
+                                from_anchor_index: 0,
+                                to_device_id: downstream_id.to_string(),
+                                to_anchor_index: old_conn_ref.map(|c| c.to_anchor_index).unwrap_or(0),
+                                name: format!("路径{:03}", canvas.connection_counter),
+                                length_mm: None,
+                                auto_chain: true,
+                                continuous_transport,
+                                is_end_link: false,
+                                transport_speed_mps: transport_speed,
+                                transport_mode,
+                                max_transport_count,
+                                unlimited_transport,
+                                cart_count,
+                                cart_capacity,
+                                line_style: LineStyle::Straight,
+                                curve_control_x: None,
+                                curve_control_y: None,
+                                intermediate_points: vec![],
+                                elbow_offset: None,
+                            };
+                            canvas.connections.insert(conn2_id, conn2);
+
+                            applied.push(format!("在 {}[{}] 和 {}[{}] 之间添加缓冲区 {}(容量={})", upstream_id, upstream_name, downstream_id, downstream_name, buf_name, capacity));
+                        } else {
+                            let missing = if upstream.is_none() { format!("上游设备{}", upstream_id) } else { String::new() };
+                            let missing2 = if downstream.is_none() { format!("下游设备{}", downstream_id) } else { String::new() };
+                            let missing_all = if missing.is_empty() { missing2 } else if missing2.is_empty() { missing } else { format!("{}和{}", missing, missing2) };
+                            applied.push(format!("⚠ 添加缓冲区跳过：找不到{}", missing_all));
+                        }
+                    }
+                }
+            }
+            "clone_device" => {
+                if let Some(obj) = change.value.as_object() {
+                    let device_id = obj.get("device_id").and_then(|v| v.as_str()).unwrap_or("");
+                    let count = obj.get("count").and_then(|v| v.as_i64()).unwrap_or(1).min(3) as usize;
+
+                    if let Some(source_device) = canvas.devices.get(device_id).cloned() {
+                        let source_name = source_device.name().to_string();
+                        let mut new_device_ids: Vec<String> = Vec::new();
+
+                        for i in 0..count {
+                            let (prefix, name_prefix) = match &source_device {
+                                Device::Station(_) => ("EQUI", "设备"),
+                                Device::AssemblyStation(_) => ("ASS", "装配站"),
+                                Device::DisassemblyStation(_) => ("DIS", "拆解站"),
+                                _ => continue,
+                            };
+
+                            let counter = canvas.device_counters.entry(prefix.to_string()).or_insert(0);
+                            *counter += 1;
+                            let new_id = format!("{}{:03}", prefix, counter);
+                            let new_name = format!("{}{:03}", name_prefix, counter);
+
+                            let offset_y = (i as f64 + 1.0) * 300.0;
+                            let mut cloned = source_device.clone();
+
+                            match &mut cloned {
+                                Device::Station(d) => {
+                                    d.base.id = new_id.clone();
+                                    d.base.name = new_name.clone();
+                                    d.base.y_mm += offset_y;
+                                }
+                                Device::AssemblyStation(d) => {
+                                    d.base.id = new_id.clone();
+                                    d.base.name = new_name.clone();
+                                    d.base.y_mm += offset_y;
+                                }
+                                Device::DisassemblyStation(d) => {
+                                    d.base.id = new_id.clone();
+                                    d.base.name = new_name.clone();
+                                    d.base.y_mm += offset_y;
+                                }
+                                _ => continue,
+                            }
+
+                            canvas.devices.insert(new_id.clone(), cloned);
+                            new_device_ids.push(new_id.clone());
+                        }
+
+                        let upstream_conns: Vec<Connection> = canvas.connections.values()
+                            .filter(|c| c.to_device_id == device_id)
+                            .cloned()
+                            .collect();
+                        let downstream_conns: Vec<Connection> = canvas.connections.values()
+                            .filter(|c| c.from_device_id == device_id)
+                            .cloned()
+                            .collect();
+
+                        for new_id in &new_device_ids {
+                            for up_conn in &upstream_conns {
+                                canvas.connection_counter += 1;
+                                let conn_id = format!("PATH{:03}", canvas.connection_counter);
+                                let new_conn = Connection {
+                                    id: conn_id.clone(),
+                                    from_device_id: up_conn.from_device_id.clone(),
+                                    from_anchor_index: up_conn.from_anchor_index,
+                                    to_device_id: new_id.clone(),
+                                    to_anchor_index: up_conn.to_anchor_index,
+                                    name: format!("路径{:03}", canvas.connection_counter),
+                                    length_mm: None,
+                                    auto_chain: true,
+                                    continuous_transport: up_conn.continuous_transport,
+                                    is_end_link: false,
+                                    transport_speed_mps: up_conn.transport_speed_mps,
+                                    transport_mode: up_conn.transport_mode.clone(),
+                                    max_transport_count: up_conn.max_transport_count,
+                                    unlimited_transport: up_conn.unlimited_transport,
+                                    cart_count: up_conn.cart_count,
+                                    cart_capacity: up_conn.cart_capacity,
+                                    line_style: LineStyle::Straight,
+                                    curve_control_x: None,
+                                    curve_control_y: None,
+                                    intermediate_points: vec![],
+                                    elbow_offset: None,
+                                };
+                                canvas.connections.insert(conn_id, new_conn);
+                            }
+
+                            for down_conn in &downstream_conns {
+                                canvas.connection_counter += 1;
+                                let conn_id = format!("PATH{:03}", canvas.connection_counter);
+                                let new_conn = Connection {
+                                    id: conn_id.clone(),
+                                    from_device_id: new_id.clone(),
+                                    from_anchor_index: down_conn.from_anchor_index,
+                                    to_device_id: down_conn.to_device_id.clone(),
+                                    to_anchor_index: down_conn.to_anchor_index,
+                                    name: format!("路径{:03}", canvas.connection_counter),
+                                    length_mm: None,
+                                    auto_chain: true,
+                                    continuous_transport: down_conn.continuous_transport,
+                                    is_end_link: false,
+                                    transport_speed_mps: down_conn.transport_speed_mps,
+                                    transport_mode: down_conn.transport_mode.clone(),
+                                    max_transport_count: down_conn.max_transport_count,
+                                    unlimited_transport: down_conn.unlimited_transport,
+                                    cart_count: down_conn.cart_count,
+                                    cart_capacity: down_conn.cart_capacity,
+                                    line_style: LineStyle::Straight,
+                                    curve_control_x: None,
+                                    curve_control_y: None,
+                                    intermediate_points: vec![],
+                                    elbow_offset: None,
+                                };
+                                canvas.connections.insert(conn_id, new_conn);
+                            }
+                        }
+
+                        applied.push(format!("复制设备 {}[{}] × {} 台，新设备: [{}]", device_id, source_name, count, new_device_ids.join(", ")));
+                    } else {
+                        applied.push(format!("⚠ 复制设备跳过：找不到设备{}", device_id));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let (saved_duration, saved_speed, saved_rule, saved_interval, saved_mode, saved_priorities, saved_strategy, saved_consider_priority) = {
+        let simulation = state.simulation.lock().map_err(|e| e.to_string())?;
+        (
+            simulation.state().duration_s,
+            simulation.state().speed,
+            simulation.state().resource_selection_rule,
+            simulation.state().utilization_sample_interval_s,
+            simulation.state().simulation_mode,
+            simulation.state().warehouse_selection_priorities.clone(),
+            simulation.state().product_selection_strategy,
+            simulation.state().consider_product_priority,
+        )
+    };
+
+    let mut simulation = state.simulation.lock().map_err(|e| e.to_string())?;
+    let engine = crate::simulation::SimulationEngine::new(canvas.clone());
+    *simulation = engine;
+    simulation.set_duration(saved_duration);
+    simulation.set_speed(saved_speed);
+    simulation.set_resource_selection_rule(saved_rule);
+    simulation.set_utilization_sample_interval(saved_interval);
+    simulation.set_simulation_mode(saved_mode);
+    simulation.set_warehouse_selection_priorities(saved_priorities);
+    simulation.set_product_selection_strategy(saved_strategy);
+    simulation.set_consider_product_priority(saved_consider_priority);
+    drop(simulation);
+
+    Ok(applied)
+}
+
+fn apply_device_field_change(device: &Device, field: &str, value: &serde_json::Value) -> Device {
+    match device {
+        Device::Warehouse(wh) => {
+            let mut updated = wh.clone();
+            if field == "release_mode" {
+                if let Some(s) = value.as_str() {
+                    updated.release_mode = match s {
+                        "wait_for_idle" => ReleaseMode::WaitForIdle,
+                        _ => ReleaseMode::Immediate,
+                    };
+                }
+            }
+            Device::Warehouse(updated)
+        }
+        Device::TempStore(ts) => {
+            let mut updated = ts.clone();
+            if field == "release_mode" {
+                if let Some(s) = value.as_str() {
+                    updated.release_mode = match s {
+                        "wait_for_idle" => ReleaseMode::WaitForIdle,
+                        _ => ReleaseMode::Immediate,
+                    };
+                }
+            }
+            Device::TempStore(updated)
+        }
+        Device::Buffer(buf) => {
+            let mut updated = buf.clone();
+            if field == "max_capacity" {
+                if let Some(n) = value.as_i64() {
+                    updated.max_capacity = Some(n as i32);
+                }
+            }
+            Device::Buffer(updated)
+        }
+        _ => device.clone(),
+    }
+}
+
+#[tauri::command]
 pub fn clear_canvas(state: State<'_, AppState>) -> Result<(), String> {
     let mut canvas = state.canvas.lock().map_err(|e| e.to_string())?;
     canvas.devices.clear();
@@ -171,8 +665,21 @@ pub fn get_connections(state: State<'_, AppState>) -> Result<Vec<Connection>, St
 
 #[tauri::command]
 pub fn save_layout(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    let simulation_params = {
+        let simulation = state.simulation.lock().map_err(|e| e.to_string())?;
+        let sim_state = simulation.state();
+        Some(crate::models::SimulationParams {
+            resource_selection_rule: sim_state.resource_selection_rule,
+            product_selection_strategy: sim_state.product_selection_strategy,
+            consider_product_priority: sim_state.consider_product_priority,
+            warehouse_selection_priorities: sim_state.warehouse_selection_priorities.clone(),
+            utilization_sample_interval_s: sim_state.utilization_sample_interval_s,
+            simulation_mode: sim_state.simulation_mode,
+        })
+    };
+
     let canvas = state.canvas.lock().map_err(|e| e.to_string())?;
-    
+
     let layout = LayoutData {
         canvas_width_mm: canvas.width_mm,
         canvas_height_mm: canvas.height_mm,
@@ -183,12 +690,57 @@ pub fn save_layout(state: State<'_, AppState>, path: String) -> Result<(), Strin
         tools: canvas.tools.values().cloned().collect(),
         settings: canvas.settings.clone(),
         simulation_records: canvas.simulation_records.clone(),
+        simulation_params,
     };
     
     let json = serde_json::to_string_pretty(&layout).map_err(|e| e.to_string())?;
     fs::write(&path, json).map_err(|e| e.to_string())?;
     
     Ok(())
+}
+
+#[tauri::command]
+pub fn save_canvas_state_to_path(
+    state: State<'_, AppState>,
+    canvas_state: CanvasState,
+    path: String,
+    simulation_params_override: Option<crate::models::SimulationParams>,
+) -> Result<(), String> {
+    let simulation_params = simulation_params_override.or_else(|| {
+        let simulation = state.simulation.lock().ok()?;
+        let sim_state = simulation.state();
+        Some(crate::models::SimulationParams {
+            resource_selection_rule: sim_state.resource_selection_rule,
+            product_selection_strategy: sim_state.product_selection_strategy,
+            consider_product_priority: sim_state.consider_product_priority,
+            warehouse_selection_priorities: sim_state.warehouse_selection_priorities.clone(),
+            utilization_sample_interval_s: sim_state.utilization_sample_interval_s,
+            simulation_mode: sim_state.simulation_mode,
+        })
+    });
+
+    let layout = LayoutData {
+        canvas_width_mm: canvas_state.width_mm,
+        canvas_height_mm: canvas_state.height_mm,
+        devices: canvas_state.devices.values().cloned().collect(),
+        connections: canvas_state.connections.values().cloned().collect(),
+        products: canvas_state.products.values().cloned().collect(),
+        materials: canvas_state.materials.values().cloned().collect(),
+        tools: canvas_state.tools.values().cloned().collect(),
+        settings: canvas_state.settings,
+        simulation_records: canvas_state.simulation_records,
+        simulation_params,
+    };
+
+    let json = serde_json::to_string_pretty(&layout).map_err(|e| e.to_string())?;
+    fs::write(&path, json).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn write_text_to_file(path: String, content: String) -> Result<(), String> {
+    fs::write(&path, content).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -243,6 +795,18 @@ pub fn load_layout(state: State<'_, AppState>, path: String) -> Result<LayoutDat
                 canvas.connection_counter = canvas.connection_counter.max(number);
             }
         }
+    }
+    drop(canvas);
+
+    if let Some(ref params) = layout.simulation_params {
+        let mut simulation = state.simulation.lock().map_err(|e| e.to_string())?;
+        simulation.set_resource_selection_rule(params.resource_selection_rule);
+        simulation.set_product_selection_strategy(params.product_selection_strategy);
+        simulation.set_consider_product_priority(params.consider_product_priority);
+        simulation.set_warehouse_selection_priorities(params.warehouse_selection_priorities.clone());
+        simulation.set_utilization_sample_interval(params.utilization_sample_interval_s);
+        simulation.set_simulation_mode(params.simulation_mode);
+        drop(simulation);
     }
     
     Ok(layout)
@@ -319,6 +883,49 @@ pub fn reset_simulation(state: State<'_, AppState>) -> Result<(), String> {
 pub fn step_simulation(state: State<'_, AppState>, dt_s: f64) -> Result<bool, String> {
     let mut simulation = state.simulation.lock().map_err(|e| e.to_string())?;
     Ok(simulation.step(dt_s))
+}
+
+#[tauri::command]
+pub fn run_simulation_to_completion(state: State<'_, AppState>) -> Result<crate::simulation::SimulationResults, String> {
+    let (engine, saved_duration, saved_speed, saved_rule, saved_interval, saved_mode, saved_priorities, saved_strategy, saved_consider_priority) = {
+        let canvas = state.canvas.lock().map_err(|e| e.to_string())?;
+        let simulation = state.simulation.lock().map_err(|e| e.to_string())?;
+
+        let engine = crate::simulation::SimulationEngine::new(canvas.clone());
+        (
+            engine,
+            simulation.state().duration_s,
+            simulation.state().speed,
+            simulation.state().resource_selection_rule,
+            simulation.state().utilization_sample_interval_s,
+            simulation.state().simulation_mode,
+            simulation.state().warehouse_selection_priorities.clone(),
+            simulation.state().product_selection_strategy,
+            simulation.state().consider_product_priority,
+        )
+    };
+
+    let mut simulation = state.simulation.lock().map_err(|e| e.to_string())?;
+    *simulation = engine;
+    simulation.set_duration(saved_duration);
+    simulation.set_speed(saved_speed);
+    simulation.set_resource_selection_rule(saved_rule);
+    simulation.set_utilization_sample_interval(saved_interval);
+    simulation.set_simulation_mode(saved_mode);
+    simulation.set_warehouse_selection_priorities(saved_priorities);
+    simulation.set_product_selection_strategy(saved_strategy);
+    simulation.set_consider_product_priority(saved_consider_priority);
+    simulation.start();
+
+    let step_size = 1.0;
+    let max_steps = 1_000_000;
+    for _ in 0..max_steps {
+        if simulation.step(step_size) {
+            break;
+        }
+    }
+
+    Ok(simulation.get_results())
 }
 
 #[tauri::command]

@@ -339,6 +339,7 @@ export default function AiAnalysisModal({ onClose }: AiAnalysisModalProps) {
   const aiAnalysisLoading = useAppStore((state) => state.aiAnalysisLoading);
   const aiAnalysisRecords = useAppStore((state) => state.aiAnalysisRecords);
   const loadAiAnalysisRecords = useAppStore((state) => state.loadAiAnalysisRecords);
+  const getSimulationRecords = useAppStore((state) => state.getSimulationRecords);
 
   const [activeTab, setActiveTab] = useState<TabType>('select');
   const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
@@ -346,15 +347,20 @@ export default function AiAnalysisModal({ onClose }: AiAnalysisModalProps) {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [selectedHistoryRecord, setSelectedHistoryRecord] = useState<AiAnalysisRecord | null>(null);
+  const [simulationRecords, setSimulationRecords] = useState<SimulationRecord[]>([]);
 
   const [position, setPosition] = useState({ x: 0, y: -80 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
-  const records = canvas.simulation_records || [];
+  const refreshSimulationRecords = async () => {
+    const data = await getSimulationRecords();
+    setSimulationRecords(data);
+  };
 
   useEffect(() => {
     loadAiAnalysisRecords();
+    refreshSimulationRecords();
     setAnalysisResult(null);
     setAnalysisError(null);
     setSelectedHistoryId(null);
@@ -424,7 +430,7 @@ export default function AiAnalysisModal({ onClose }: AiAnalysisModalProps) {
     setAnalysisError(null);
     setAnalysisResult(null);
 
-    const selectedRecords = records.filter(r => selectedRecordIds.includes(r.id));
+    const selectedRecords = simulationRecords.filter(r => selectedRecordIds.includes(r.id));
     const canvasData = {
       products: canvas.products,
       materials: canvas.materials,
@@ -437,6 +443,8 @@ export default function AiAnalysisModal({ onClose }: AiAnalysisModalProps) {
     try {
       const result = await callAiAnalysis(combinedMd, selectedRecordIds.length);
       setAnalysisResult(result);
+      setSelectedHistoryId(null);
+      setSelectedHistoryRecord(null);
 
       const modelUsed = 'AI';
       const prompt = selectedRecordIds.length === 1
@@ -592,11 +600,11 @@ export default function AiAnalysisModal({ onClose }: AiAnalysisModalProps) {
               <div className="ai-select-hint">
                 选择需要分析的模拟记录（最多 {MAX_SELECT_COUNT} 条），选多条时将进行对比分析
               </div>
-              {records.length === 0 ? (
+              {simulationRecords.length === 0 ? (
                 <div className="ai-no-records">暂无模拟记录，请先运行模拟并保存记录</div>
               ) : (
                 <div className="ai-record-list">
-                  {records.map(record => (
+                  {simulationRecords.map(record => (
                     <div
                       key={record.id}
                       className={`ai-record-item ${selectedRecordIds.includes(record.id) ? 'selected' : ''}`}

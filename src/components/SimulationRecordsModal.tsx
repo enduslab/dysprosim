@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useAppStore } from '../store';
 import type { SimulationRecord, SimulationResults, UtilizationRecord, StockHistoryRecord } from '../types';
-import { save } from '@tauri-apps/plugin-dialog';
+import { save, ask } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, writeFile } from '@tauri-apps/plugin-fs';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas-pro';
@@ -1839,7 +1839,7 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
             ['最大等待运输时间', formatTime(devStat.max_wait_transport)],
             ['平均加工时间', formatTime(devStat.avg_proc_time_s)],
             ['总加工时间', formatTime(devStat.total_proc_time_s)],
-            ['利用率', (devStat.utilization * 100).toFixed(1) + '%'],
+            ['利用率', devStat.utilization.toFixed(1) + '%'],
           ];
 
           if (devStat.by_product && Object.keys(devStat.by_product).length > 0) {
@@ -1913,7 +1913,7 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
             connStat.from_device,
             connStat.to_device,
             connStat.transport_count,
-            (connStat.utilization * 100).toFixed(1) + '%',
+            connStat.utilization.toFixed(1) + '%',
           ]);
         }
 
@@ -2280,7 +2280,13 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
   const handleDelete = async () => {
     if (!selectedRecordId) return;
     
-    if (!confirm('确定要删除这条模拟记录吗？此操作不可撤销。')) {
+    const confirmed = await ask('确定要删除这条模拟记录吗？此操作不可撤销。', {
+      title: '确认删除',
+      kind: 'warning',
+      okLabel: '确认删除',
+      cancelLabel: '取消',
+    });
+    if (!confirmed) {
       return;
     }
     
@@ -2298,7 +2304,13 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
   const handleDeleteAll = async () => {
     if (records.length === 0) return;
     
-    if (!confirm(`确定要删除全部 ${records.length} 条模拟记录吗？此操作不可撤销。`)) {
+    const confirmed = await ask(`确定要删除全部 ${records.length} 条模拟记录吗？此操作不可撤销。`, {
+      title: '确认删除',
+      kind: 'warning',
+      okLabel: '确认删除',
+      cancelLabel: '取消',
+    });
+    if (!confirmed) {
       return;
     }
     
