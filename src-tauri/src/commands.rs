@@ -151,8 +151,16 @@ pub fn apply_optimization_changes(
                 }
             }
             "product_priority" => {
-                if let Some(ref product_code) = change.device_id {
-                    if let Some(product) = canvas.products.get(product_code).cloned() {
+                if let Some(ref raw_code) = change.device_id {
+                    let resolved_code = if canvas.products.contains_key(raw_code) {
+                        raw_code.clone()
+                    } else {
+                        canvas.products.values()
+                            .find(|p| p.name == *raw_code)
+                            .map(|p| p.code.clone())
+                            .unwrap_or_else(|| raw_code.clone())
+                    };
+                    if let Some(product) = canvas.products.get(&resolved_code).cloned() {
                         let product_name = product.name.clone();
                         let priority = if change.value.is_null() {
                             None
@@ -163,7 +171,7 @@ pub fn apply_optimization_changes(
                             priority,
                             ..product
                         };
-                        canvas.products.insert(product_code.clone(), updated_product);
+                        canvas.products.insert(resolved_code.clone(), updated_product);
                         let priority_label = priority.map(|p| p.to_string()).unwrap_or_else(|| "无".to_string());
                         applied.push(format!("产品[{}] 优先级 → {}", product_name, priority_label));
                     }
@@ -194,9 +202,20 @@ pub fn apply_optimization_changes(
                             let buf_id = format!("BUF{:03}", counter);
                             let buf_name = format!("缓冲区{:03}", counter);
 
-                            let product = canvas.products.get(&product_code);
-                            let product_name = product.map(|p| p.name.clone()).unwrap_or_default();
-                            let product_color = product.map(|p| p.color.clone()).unwrap_or("#4CAF50".to_string());
+                            let mut resolved_code = product_code.clone();
+                            let product = if let Some(p) = canvas.products.get(&product_code) {
+                                Some(p.clone())
+                            } else {
+                                let found = canvas.products.values().find(|p| p.name == product_code);
+                                if let Some(p) = found {
+                                    resolved_code = p.code.clone();
+                                    Some(p.clone())
+                                } else {
+                                    None
+                                }
+                            };
+                            let product_name = product.as_ref().map(|p| p.name.clone()).unwrap_or_default();
+                            let product_color = product.as_ref().map(|p| p.color.clone()).unwrap_or("#4CAF50".to_string());
 
                             let mut params = HashMap::new();
                             params.insert("width".to_string(), 200.0);
@@ -222,7 +241,7 @@ pub fn apply_optimization_changes(
                                     workshop_left: None,
                                     workshop_right: None,
                                 },
-                                product_code: product_code.clone(),
+                                product_code: resolved_code.clone(),
                                 product_name,
                                 product_color,
                                 capacity_mode: CapacityMode::Fixed,
@@ -230,7 +249,7 @@ pub fn apply_optimization_changes(
                                 buffer_duration_s: None,
                                 current_stock: 0,
                                 start_node_ids: String::new(),
-                                processable_products: vec![],
+                                processable_products: if resolved_code.is_empty() { vec![] } else { vec![resolved_code.clone()] },
                             });
 
                             canvas.devices.insert(buf_id.clone(), buffer);
@@ -665,20 +684,44 @@ pub fn get_connections(state: State<'_, AppState>) -> Result<Vec<Connection>, St
 
 #[tauri::command]
 pub fn save_layout(state: State<'_, AppState>, path: String) -> Result<(), String> {
-    let simulation_params = {
+    let (simulation_params, current_sim_record) = {
         let simulation = state.simulation.lock().map_err(|e| e.to_string())?;
         let sim_state = simulation.state();
-        Some(crate::models::SimulationParams {
+        let params = crate::models::SimulationParams {
             resource_selection_rule: sim_state.resource_selection_rule,
             product_selection_strategy: sim_state.product_selection_strategy,
             consider_product_priority: sim_state.consider_product_priority,
             warehouse_selection_priorities: sim_state.warehouse_selection_priorities.clone(),
             utilization_sample_interval_s: sim_state.utilization_sample_interval_s,
             simulation_mode: sim_state.simulation_mode,
-        })
+        };
+
+        let record = if sim_state.state == crate::simulation::SimState::Completed {
+            let results = simulation.get_results();
+            let id = uuid::Uuid::new_v4().to_string();
+            let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let process_products: Vec<crate::models::ProcessProduct> = sim_state.process_products.values().cloned().collect();
+            Some(crate::models::SimulationRecord {
+                id,
+                timestamp,
+                duration_s: results.duration_s,
+                completed_products: results.completed_products,
+                results,
+                process_products,
+            })
+        } else {
+            None
+        };
+
+        (Some(params), record)
     };
 
-    let canvas = state.canvas.lock().map_err(|e| e.to_string())?;
+    let mut canvas = state.canvas.lock().map_err(|e| e.to_string())?;
+
+    if let Some(record) = &current_sim_record {
+        canvas.simulation_records.clear();
+        canvas.simulation_records.push(record.clone());
+    }
 
     let layout = LayoutData {
         canvas_width_mm: canvas.width_mm,

@@ -944,11 +944,6 @@ impl SimulationEngine {
             return;
         }
 
-        let outgoing: Vec<_> = self.canvas_state.connections
-            .values()
-            .filter(|c| c.from_device_id == start_node_id)
-            .collect();
-
         match feed_mode {
             crate::models::FeedMode::Paced => {
                 if let Some(conn) = self.select_downstream_connection(start_node_id, &product_code) {
@@ -1009,17 +1004,7 @@ impl SimulationEngine {
                 }
             }
             crate::models::FeedMode::Idle => {
-                let mut idle_conn: Option<crate::models::Connection> = None;
-                for conn in &outgoing {
-                    if let Some(sim_dev) = self.state.devices.get(&conn.to_device_id) {
-                        if !sim_dev.busy && sim_dev.wip == 0 {
-                            idle_conn = Some((*conn).clone());
-                            break;
-                        }
-                    }
-                }
-
-                if let Some(conn) = idle_conn {
+                if let Some(conn) = self.select_downstream_connection(start_node_id, &product_code) {
                     let pp_id = self.generate_start_node_pp_id(start_node_id, &product_code);
                     
                     *self.state.start_node_feed_counts.entry(start_node_id.to_string()).or_insert(0) += 1;
@@ -1065,7 +1050,7 @@ impl SimulationEngine {
         }
     }
 
-    fn handle_downstream_idle(&mut self, start_node_id: &str, downstream_device_id: &str, time_s: f64) {
+    fn handle_downstream_idle(&mut self, start_node_id: &str, _downstream_device_id: &str, time_s: f64) {
         let (product_code, product_name, product_color, feed_mode, feed_status) = match self.canvas_state.devices.get(start_node_id) {
             Some(crate::models::Device::StartNode(sn)) => {
                 let product = self.canvas_state.products.get(&sn.product_code);
@@ -1093,12 +1078,7 @@ impl SimulationEngine {
             return;
         }
 
-        let conn = self.canvas_state.connections
-            .values()
-            .find(|c| c.from_device_id == start_node_id && c.to_device_id == downstream_device_id)
-            .cloned();
-
-        if let Some(conn) = conn {
+        if let Some(conn) = self.select_downstream_connection(start_node_id, &product_code) {
             let pp_id = self.generate_start_node_pp_id(start_node_id, &product_code);
             
             *self.state.start_node_feed_counts.entry(start_node_id.to_string()).or_insert(0) += 1;
@@ -1301,25 +1281,18 @@ impl SimulationEngine {
         let sim_dev = self.state.devices.get(device_id);
         if let Some(sim_dev) = sim_dev {
             if !sim_dev.busy && sim_dev.wip == 0 {
-                let upstream_start_nodes: Vec<String> = self.canvas_state.connections
-                    .values()
-                    .filter(|c| c.to_device_id == device_id)
-                    .filter_map(|c| {
-                        let from_device = self.canvas_state.devices.get(&c.from_device_id)?;
-                        if from_device.is_start() {
-                            Some(c.from_device_id.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
+                let upstream_start_nodes = self.find_upstream_start_nodes(device_id);
 
                 for start_node_id in upstream_start_nodes {
-                    self.push_event(SimEvent::DownstreamIdle {
-                        start_node_id,
-                        downstream_device_id: device_id.to_string(),
-                        time_s,
-                    });
+                    if let Some(crate::models::Device::StartNode(sn)) = self.canvas_state.devices.get(&start_node_id) {
+                        if sn.feed_mode == crate::models::FeedMode::Idle && sn.feed_status == "投料中" {
+                            self.push_event(SimEvent::DownstreamIdle {
+                                start_node_id,
+                                downstream_device_id: device_id.to_string(),
+                                time_s,
+                            });
+                        }
+                    }
                 }
             }
         }
@@ -1822,25 +1795,18 @@ impl SimulationEngine {
         let sim_dev = self.state.devices.get(to_id);
         if let Some(sim_dev) = sim_dev {
             if !sim_dev.busy && sim_dev.wip == 0 {
-                let upstream_start_nodes: Vec<String> = self.canvas_state.connections
-                    .values()
-                    .filter(|c| c.to_device_id == to_id)
-                    .filter_map(|c| {
-                        let from_device = self.canvas_state.devices.get(&c.from_device_id)?;
-                        if from_device.is_start() {
-                            Some(c.from_device_id.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
+                let upstream_start_nodes = self.find_upstream_start_nodes(to_id);
 
                 for start_node_id in upstream_start_nodes {
-                    self.push_event(SimEvent::DownstreamIdle {
-                        start_node_id,
-                        downstream_device_id: to_id.to_string(),
-                        time_s,
-                    });
+                    if let Some(crate::models::Device::StartNode(sn)) = self.canvas_state.devices.get(&start_node_id) {
+                        if sn.feed_mode == crate::models::FeedMode::Idle && sn.feed_status == "投料中" {
+                            self.push_event(SimEvent::DownstreamIdle {
+                                start_node_id,
+                                downstream_device_id: to_id.to_string(),
+                                time_s,
+                            });
+                        }
+                    }
                 }
             }
         }
@@ -1992,8 +1958,7 @@ impl SimulationEngine {
                     let is_storage = matches!(
                         device,
                         crate::models::Device::Warehouse(_) |
-                        crate::models::Device::TempStore(_) |
-                        crate::models::Device::Buffer(_)
+                        crate::models::Device::TempStore(_)
                     );
 
                     let (to_x, to_y) = device.center();
@@ -4316,11 +4281,6 @@ impl SimulationEngine {
 
         self.update_total_wip();
 
-        let outgoing: Vec<_> = self.canvas_state.connections
-            .values()
-            .filter(|c| c.from_device_id == device_id)
-            .collect();
-
         for pp_id in &disassembly_products {
             let product_code = self.state.process_products.get(pp_id)
                 .map(|pp| pp.product_code.clone())
@@ -4397,25 +4357,18 @@ impl SimulationEngine {
         let sim_dev = self.state.devices.get(device_id);
         if let Some(sim_dev) = sim_dev {
             if !sim_dev.busy && sim_dev.wip == 0 {
-                let upstream_start_nodes: Vec<String> = self.canvas_state.connections
-                    .values()
-                    .filter(|c| c.to_device_id == device_id)
-                    .filter_map(|c| {
-                        let from_device = self.canvas_state.devices.get(&c.from_device_id)?;
-                        if from_device.is_start() {
-                            Some(c.from_device_id.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
+                let upstream_start_nodes = self.find_upstream_start_nodes(device_id);
 
                 for start_node_id in upstream_start_nodes {
-                    self.push_event(SimEvent::DownstreamIdle {
-                        start_node_id,
-                        downstream_device_id: device_id.to_string(),
-                        time_s,
-                    });
+                    if let Some(crate::models::Device::StartNode(sn)) = self.canvas_state.devices.get(&start_node_id) {
+                        if sn.feed_mode == crate::models::FeedMode::Idle && sn.feed_status == "投料中" {
+                            self.push_event(SimEvent::DownstreamIdle {
+                                start_node_id,
+                                downstream_device_id: device_id.to_string(),
+                                time_s,
+                            });
+                        }
+                    }
                 }
             }
         }
@@ -5112,6 +5065,19 @@ impl SimulationEngine {
             self.check_buffer_capacity(buffer_id);
             
             self.try_transport_from_upstream_to_buffer(buffer_id, time_s);
+
+            let upstream_start_nodes = self.find_upstream_start_nodes(buffer_id);
+            for sn_id in upstream_start_nodes {
+                if let Some(crate::models::Device::StartNode(sn)) = self.canvas_state.devices.get(&sn_id) {
+                    if sn.feed_mode == crate::models::FeedMode::Idle && sn.feed_status == "投料中" {
+                        self.push_event(SimEvent::DownstreamIdle {
+                            start_node_id: sn_id,
+                            downstream_device_id: buffer_id.to_string(),
+                            time_s,
+                        });
+                    }
+                }
+            }
         }
     }
 
@@ -5440,34 +5406,31 @@ impl SimulationEngine {
                 self.push_event(event);
             }
 
-            let idle_events: Vec<SimEvent> = self.canvas_state.devices
-                .iter()
-                .filter_map(|(id, device)| {
-                    if device.is_start() {
-                        if let crate::models::Device::StartNode(sn) = device {
-                            if sn.feed_mode == crate::models::FeedMode::Idle {
-                                let outgoing: Vec<_> = self.canvas_state.connections
-                                    .values()
-                                    .filter(|c| &c.from_device_id == id)
-                                    .collect();
+            let mut idle_events: Vec<SimEvent> = Vec::new();
+            for (id, device) in &self.canvas_state.devices {
+                if device.is_start() {
+                    if let crate::models::Device::StartNode(sn) = device {
+                        if sn.feed_mode == crate::models::FeedMode::Idle {
+                            let outgoing: Vec<_> = self.canvas_state.connections
+                                .values()
+                                .filter(|c| &c.from_device_id == id)
+                                .collect();
 
-                                for conn in &outgoing {
-                                    if let Some(sim_dev) = self.state.devices.get(&conn.to_device_id) {
-                                        if !sim_dev.busy && sim_dev.wip == 0 {
-                                            return Some(SimEvent::DownstreamIdle {
-                                                start_node_id: id.clone(),
-                                                downstream_device_id: conn.to_device_id.clone(),
-                                                time_s: 0.0,
-                                            });
-                                        }
+                            for conn in &outgoing {
+                                if let Some(sim_dev) = self.state.devices.get(&conn.to_device_id) {
+                                    if !sim_dev.busy && sim_dev.wip == 0 {
+                                        idle_events.push(SimEvent::DownstreamIdle {
+                                            start_node_id: id.clone(),
+                                            downstream_device_id: conn.to_device_id.clone(),
+                                            time_s: 0.0,
+                                        });
                                     }
                                 }
                             }
                         }
                     }
-                    None
-                })
-                .collect();
+                }
+            }
 
             for event in idle_events {
                 self.push_event(event);

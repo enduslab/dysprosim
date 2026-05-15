@@ -371,9 +371,10 @@ function generateOptimizationMd(record: SimulationRecord, canvas: { products: Re
 
   md += `\n## 产品平均加工时间\n\n`;
   if (results.product_avg_process_times && results.product_avg_process_times.length > 0) {
-    md += `| 产品 | 平均加工时间 |\n|------|------------|\n`;
+    md += `| 产品编码 | 产品名称 | 平均加工时间 |\n|---------|---------|------------|\n`;
     for (const pt of results.product_avg_process_times) {
-      md += `| ${pt.product_name || pt.product_code} | ${pt.avg_process_time_s.toFixed(3)}s |\n`;
+      const pName = canvas.products[pt.product_code]?.name || pt.product_name || pt.product_code;
+      md += `| ${pt.product_code} | ${pName} | ${pt.avg_process_time_s.toFixed(3)}s |\n`;
     }
   }
 
@@ -1305,6 +1306,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   saveSimulationRecord: async () => {
     try {
       const recordId = await invoke<string>('save_simulation_record');
+      const records = await invoke<SimulationRecord[]>('get_simulation_records');
+      set((state) => ({
+        canvas: {
+          ...state.canvas,
+          simulation_records: records,
+        },
+      }));
       return recordId;
     } catch (error) {
       set({ error: String(error) });
@@ -1335,6 +1343,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteSimulationRecord: async (recordId: string) => {
     try {
       await invoke('delete_simulation_record', { recordId });
+      const records = await invoke<SimulationRecord[]>('get_simulation_records');
+      set((state) => ({
+        canvas: {
+          ...state.canvas,
+          simulation_records: records,
+        },
+      }));
     } catch (error) {
       set({ error: String(error) });
     }
@@ -1701,12 +1716,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
 
         let recordId: string | undefined;
-        const currentCanvasState = get().canvas;
+        let currentCanvasState = get().canvas;
 
         if (isImprovement) {
           try {
             recordId = await invoke<string>('save_simulation_record');
             await get().loadCanvasState();
+            currentCanvasState = get().canvas;
           } catch {
             recordId = undefined;
           }

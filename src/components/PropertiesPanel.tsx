@@ -1032,14 +1032,22 @@ function ProductSelector({
   onSelect: (code: string) => void;
   showColor?: boolean;
 }) {
-  const selectedProduct = products.find(p => p.code === value);
+  let selectedProduct = products.find(p => p.code === value);
+  let effectiveValue = value;
+  if (!selectedProduct && value) {
+    const foundByName = products.find(p => p.name === value);
+    if (foundByName) {
+      selectedProduct = foundByName;
+      effectiveValue = foundByName.code;
+    }
+  }
   
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
         <select
           className="property-select"
-          value={value}
+          value={effectiveValue}
           onChange={(e) => onSelect(e.target.value)}
           style={{ flex: 1 }}
         >
@@ -1062,7 +1070,7 @@ function ProductSelector({
           />
         )}
       </div>
-      {value && !products.find(p => p.code === value) && (
+      {effectiveValue && !selectedProduct && (
         <ImeInput
           className="property-input"
           value={value}
@@ -1260,6 +1268,9 @@ function ProductSettingsTab({
   }
   
   const deviceWithProduct = device as StartNode | Buffer;
+  const displayProductName = deviceWithProduct.product_name 
+    || products.find(p => p.code === deviceWithProduct.product_code)?.name 
+    || '';
   
   return (
     <div className="property-group">
@@ -1271,10 +1282,10 @@ function ProductSettingsTab({
           onSelect={onProductSelect}
         />
       </div>
-      {deviceWithProduct.product_name && (
+      {displayProductName && (
         <div className="property-row">
           <span className="property-label">产品名称</span>
-          <span className="property-value">{deviceWithProduct.product_name}</span>
+          <span className="property-value">{displayProductName}</span>
         </div>
       )}
     </div>
