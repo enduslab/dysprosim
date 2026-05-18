@@ -84,9 +84,13 @@ interface AppState {
   clearCanvas: () => Promise<void>;
   addDevice: (device: Device) => Promise<string>;
   updateDevice: (device: Device) => Promise<void>;
+  updateDevicePositions: (devices: Device[]) => void;
+  commitDevicePositions: (devices: Device[]) => Promise<void>;
   deleteDevice: (id: string) => Promise<void>;
   addConnection: (connection: Connection) => Promise<string>;
   updateConnection: (connection: Connection) => Promise<void>;
+  updateConnectionPositions: (connections: Connection[]) => void;
+  commitConnectionPositions: (connections: Connection[]) => Promise<void>;
   deleteConnection: (id: string) => Promise<void>;
   saveLayout: (path: string) => Promise<void>;
   loadLayout: (path: string) => Promise<LayoutData>;
@@ -835,6 +839,45 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  updateDevicePositions: (devices) => {
+    set((state) => {
+      const newDevices = { ...state.canvas.devices };
+      for (const device of devices) {
+        newDevices[device.id] = device;
+      }
+      return {
+        canvas: {
+          ...state.canvas,
+          devices: newDevices,
+        },
+      };
+    });
+  },
+
+  commitDevicePositions: async (devices) => {
+    try {
+      for (const device of devices) {
+        await invoke('update_device', { device });
+      }
+      set((state) => {
+        const newHistory = state.history.slice(0, state.historyIndex + 1);
+        newHistory.push(JSON.parse(JSON.stringify(state.canvas)));
+        if (newHistory.length > 50) {
+          newHistory.shift();
+        }
+        const newIndex = newHistory.length - 1;
+        return {
+          history: newHistory,
+          historyIndex: newIndex,
+          canUndo: newIndex > 0,
+          canRedo: false,
+        };
+      });
+    } catch (error) {
+      set({ error: String(error) });
+    }
+  },
+
   deleteDevice: async (id) => {
     console.log('store.deleteDevice called with id:', id);
     try {
@@ -915,6 +958,45 @@ export const useAppStore = create<AppState>((set, get) => ({
             ...state.canvas,
             connections: { ...state.canvas.connections, [connection.id]: connection },
           },
+          history: newHistory,
+          historyIndex: newIndex,
+          canUndo: newIndex > 0,
+          canRedo: false,
+        };
+      });
+    } catch (error) {
+      set({ error: String(error) });
+    }
+  },
+
+  updateConnectionPositions: (connections) => {
+    set((state) => {
+      const newConnections = { ...state.canvas.connections };
+      for (const conn of connections) {
+        newConnections[conn.id] = conn;
+      }
+      return {
+        canvas: {
+          ...state.canvas,
+          connections: newConnections,
+        },
+      };
+    });
+  },
+
+  commitConnectionPositions: async (connections) => {
+    try {
+      for (const conn of connections) {
+        await invoke('update_connection', { connection: conn });
+      }
+      set((state) => {
+        const newHistory = state.history.slice(0, state.historyIndex + 1);
+        newHistory.push(JSON.parse(JSON.stringify(state.canvas)));
+        if (newHistory.length > 50) {
+          newHistory.shift();
+        }
+        const newIndex = newHistory.length - 1;
+        return {
           history: newHistory,
           historyIndex: newIndex,
           canUndo: newIndex > 0,

@@ -35,8 +35,10 @@ export default function Canvas() {
     connectionLineStyle,
     addDevice,
     addConnection,
-    updateDevice,
-    updateConnection,
+    updateDevicePositions,
+    commitDevicePositions,
+    updateConnectionPositions,
+    commitConnectionPositions,
     deleteDevice,
     deleteConnection,
     simulation,
@@ -53,9 +55,7 @@ export default function Canvas() {
   const [resizeStartSize, setResizeStartSize] = useState({ w: 0, h: 0 });
   const [connectionStartAnchor, setConnectionStartAnchor] = useState<AnchorPoint | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  const [isDraggingDevice, setIsDraggingDevice] = useState(false);
-  const [draggingDeviceId, setDraggingDeviceId] = useState<string | null>(null);
-  const [dragDeviceOffset, setDragDeviceOffset] = useState({ x: 0, y: 0 });
+  const [dragCursor, setDragCursor] = useState<string>('default');
   const [hoveredDeviceId, setHoveredDeviceId] = useState<string | null>(null);
   const [intermediatePoints, setIntermediatePoints] = useState<[number, number][]>([]);
   const [isDraggingConnectionEnd, setIsDraggingConnectionEnd] = useState(false);
@@ -69,12 +69,38 @@ export default function Canvas() {
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionBoxStart, setSelectionBoxStart] = useState<{ x: number; y: number } | null>(null);
   const [selectionBoxEnd, setSelectionBoxEnd] = useState<{ x: number; y: number } | null>(null);
-  const [multiDragStartPositions, setMultiDragStartPositions] = useState<Record<string, { x: number; y: number }>>({});
-  
+
+  const isDraggingDeviceRef = useRef(false);
+  const draggingDeviceIdRef = useRef<string | null>(null);
+  const dragDeviceOffsetRef = useRef({ x: 0, y: 0 });
+  const multiDragStartPositionsRef = useRef<Record<string, { x: number; y: number }>>({});
+  const rafIdRef = useRef<number>(0);
+  const pendingDragDevicesRef = useRef<Device[]>([]);
+  const lastDragPositionsRef = useRef<Record<string, { x_mm: number; y_mm: number }>>({});
+  const panOffsetRef = useRef(panOffset);
+  const zoomRef = useRef(zoom);
+  const pxPerMmRef = useRef(pxPerMm);
+  const canvasRef_data = useRef(canvas);
+  const selectedDeviceIdsRef = useRef(selectedDeviceIds);
+
+  panOffsetRef.current = panOffset;
+  zoomRef.current = zoom;
+  pxPerMmRef.current = pxPerMm;
+  canvasRef_data.current = canvas;
+  selectedDeviceIdsRef.current = selectedDeviceIds;
+
   const [animationFrame, setAnimationFrame] = useState(0);
   const [connectionDotPositions, setConnectionDotPositions] = useState<Record<string, number>>({});
   const [feedAnimationActive, setFeedAnimationActive] = useState<Record<string, boolean>>({});
   const [completeAnimationActive, setCompleteAnimationActive] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+  }, []);
 
   const canvasWidthPx = deviceToPx(canvas.width_mm, zoom, pxPerMm);
   const canvasHeightPx = deviceToPx(canvas.height_mm, zoom, pxPerMm);
@@ -522,11 +548,11 @@ export default function Canvas() {
         }
         const device = canvas.devices[deviceId];
         if (device) {
-          setIsDraggingDevice(true);
-          setDraggingDeviceId(deviceId);
+          isDraggingDeviceRef.current = true;
+          draggingDeviceIdRef.current = deviceId;
           const deviceX = deviceToPx(device.x_mm, zoom, pxPerMm) + panOffset.x;
           const deviceY = deviceToPx(device.y_mm, zoom, pxPerMm) + panOffset.y;
-          setDragDeviceOffset({ x: mouseX - deviceX, y: mouseY - deviceY });
+          dragDeviceOffsetRef.current = { x: mouseX - deviceX, y: mouseY - deviceY };
           
           const currentSelectedIds = selectedDeviceIds.includes(deviceId) ? selectedDeviceIds : [deviceId];
           const startPositions: Record<string, { x: number; y: number }> = {};
@@ -536,7 +562,10 @@ export default function Canvas() {
               startPositions[id] = { x: d.x_mm, y: d.y_mm };
             }
           });
-          setMultiDragStartPositions(startPositions);
+          multiDragStartPositionsRef.current = startPositions;
+          lastDragPositionsRef.current = {};
+          pendingDragDevicesRef.current = [];
+          setDragCursor('move');
         }
       } else if (connId) {
         selectConnection(connId);
@@ -558,7 +587,10 @@ export default function Canvas() {
     const rect = svgRef.current?.getBoundingClientRect();
     const mouseX = e.clientX - (rect?.left || 0);
     const mouseY = e.clientY - (rect?.top || 0);
-    setMousePos({ x: mouseX, y: mouseY });
+    
+    if (!isDraggingDeviceRef.current) {
+      setMousePos({ x: mouseX, y: mouseY });
+    }
 
     if (isPanning) {
       setPanOffset({
@@ -609,12 +641,12 @@ export default function Canvas() {
         const newH_mm = pxToMm(newH, zoom, pxPerMm);
         
         if (device.type === 'Workshop') {
-          updateDevice({
+          updateDevicePositions([{
             ...device,
             width_mm: newW_mm,
             height_mm: newH_mm,
             params: { ...device.params, width: newW_mm, height: newH_mm },
-          } as Device);
+          } as Device]);
         } else {
           let updatedParams = { ...device.params };
           switch (device.shape_type) {
@@ -662,29 +694,30 @@ export default function Canvas() {
               break;
           }
           
-          updateDevice({
+          updateDevicePositions([{
             ...device,
             params: updatedParams,
-          } as Device);
+          } as Device]);
         }
       }
-    } else if (isDraggingDevice && draggingDeviceId) {
-      const newX_mm = pxToMm(mouseX - dragDeviceOffset.x - panOffset.x, zoom, pxPerMm);
-      const newY_mm = pxToMm(mouseY - dragDeviceOffset.y - panOffset.y, zoom, pxPerMm);
-      const device = canvas.devices[draggingDeviceId];
+    } else if (isDraggingDeviceRef.current && draggingDeviceIdRef.current) {
+      const newX_mm = pxToMm(mouseX - dragDeviceOffsetRef.current.x - panOffset.x, zoom, pxPerMm);
+      const newY_mm = pxToMm(mouseY - dragDeviceOffsetRef.current.y - panOffset.y, zoom, pxPerMm);
+      const device = canvas.devices[draggingDeviceIdRef.current];
       if (device) {
-        const dx_mm = newX_mm - multiDragStartPositions[draggingDeviceId]?.x;
-        const dy_mm = newY_mm - multiDragStartPositions[draggingDeviceId]?.y;
+        const dx_mm = newX_mm - multiDragStartPositionsRef.current[draggingDeviceIdRef.current]?.x;
+        const dy_mm = newY_mm - multiDragStartPositionsRef.current[draggingDeviceIdRef.current]?.y;
         
-        const idsToMove = selectedDeviceIds.length > 0 && selectedDeviceIds.includes(draggingDeviceId) 
+        const idsToMove = selectedDeviceIds.length > 0 && selectedDeviceIds.includes(draggingDeviceIdRef.current) 
           ? selectedDeviceIds 
-          : [draggingDeviceId];
+          : [draggingDeviceIdRef.current];
         
+        const updatedDevices: Device[] = [];
         idsToMove.forEach(id => {
           const d = canvas.devices[id];
-          if (d && multiDragStartPositions[id]) {
-            let finalX = multiDragStartPositions[id].x + dx_mm;
-            let finalY = multiDragStartPositions[id].y + dy_mm;
+          if (d && multiDragStartPositionsRef.current[id]) {
+            let finalX = multiDragStartPositionsRef.current[id].x + dx_mm;
+            let finalY = multiDragStartPositionsRef.current[id].y + dy_mm;
             
             finalX = Math.max(0, Math.min(canvas.width_mm, finalX));
             finalY = Math.max(0, Math.min(canvas.height_mm, finalY));
@@ -699,13 +732,41 @@ export default function Canvas() {
               }
             }
             
-            updateDevice({
+            updatedDevices.push({
               ...d,
               x_mm: finalX,
               y_mm: finalY,
             });
           }
         });
+        
+        if (updatedDevices.length > 0) {
+          pendingDragDevicesRef.current = updatedDevices;
+          
+          if (!rafIdRef.current) {
+            rafIdRef.current = requestAnimationFrame(() => {
+              const devices = pendingDragDevicesRef.current;
+              if (devices.length > 0) {
+                const positions: Record<string, { x_mm: number; y_mm: number }> = {};
+                for (const d of devices) {
+                  positions[d.id] = { x_mm: d.x_mm, y_mm: d.y_mm };
+                }
+                const prevPositions = lastDragPositionsRef.current;
+                const changed = devices.filter(d => {
+                  const prev = prevPositions[d.id];
+                  return !prev || prev.x_mm !== d.x_mm || prev.y_mm !== d.y_mm;
+                });
+                if (changed.length > 0) {
+                  updateDevicePositions(changed);
+                  for (const d of changed) {
+                    lastDragPositionsRef.current[d.id] = { x_mm: d.x_mm, y_mm: d.y_mm };
+                  }
+                }
+              }
+              rafIdRef.current = 0;
+            });
+          }
+        }
       }
     } else if (isSelecting && selectionBoxStart) {
       setSelectionBoxEnd({ x: mouseX, y: mouseY });
@@ -753,18 +814,18 @@ export default function Canvas() {
               pxPerMm
             );
           }
-          updateConnection(updatedConn);
+          updateConnectionPositions([updatedConn]);
         }
       }
     } else if (isDraggingControlPoint && draggingControlPointConnId) {
       const conn = canvas.connections[draggingControlPointConnId];
       if (conn) {
         if (draggingControlPointType === 'curve') {
-          updateConnection({
+          updateConnectionPositions([{
             ...conn,
             curve_control_x: mouseX,
             curve_control_y: mouseY,
-          });
+          }]);
         } else if (draggingControlPointType === 'intermediate') {
           if (conn.line_style === 'free_polyline') {
             const newPoints = [...(conn.intermediate_points || [])];
@@ -783,11 +844,11 @@ export default function Canvas() {
                 pxPerMm
               );
             }
-            updateConnection({
+            updateConnectionPositions([{
               ...conn,
               intermediate_points: newPoints,
               length_mm: lengthMm,
-            });
+            }]);
           }
         } else if (draggingControlPointType === 'elbow-from' || draggingControlPointType === 'elbow-to') {
           const fromDevice = canvas.devices[conn.from_device_id];
@@ -823,11 +884,11 @@ export default function Canvas() {
               pxPerMm
             );
             
-            updateConnection({
+            updateConnectionPositions([{
               ...conn,
               elbow_offset: clampedOffset,
               length_mm: lengthMm,
-            });
+            }]);
           }
         }
       }
@@ -867,16 +928,24 @@ export default function Canvas() {
       }
     }
     
-    if (isDraggingDevice && draggingDeviceId) {
-      const idsToProcess = selectedDeviceIds.length > 0 && selectedDeviceIds.includes(draggingDeviceId) 
+    if (isDraggingDeviceRef.current && draggingDeviceIdRef.current) {
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = 0;
+      }
+      
+      const idsToProcess = selectedDeviceIds.length > 0 && selectedDeviceIds.includes(draggingDeviceIdRef.current) 
         ? selectedDeviceIds 
-        : [draggingDeviceId];
+        : [draggingDeviceIdRef.current];
+      
+      const devicesToCommit: Device[] = [];
+      const workshopChildUpdates: Device[] = [];
       
       idsToProcess.forEach(id => {
         const device = canvas.devices[id];
         if (device) {
           if (device.type === 'Workshop') {
-            const startPos = multiDragStartPositions[id];
+            const startPos = multiDragStartPositionsRef.current[id];
             if (startPos) {
               const dx = device.x_mm - startPos.x;
               const dy = device.y_mm - startPos.y;
@@ -892,7 +961,7 @@ export default function Canvas() {
                     device.x_mm, device.y_mm,
                     ws.width_mm, ws.height_mm
                   );
-                  updateDevice({
+                  workshopChildUpdates.push({
                     ...d,
                     x_mm: newX,
                     y_mm: newY,
@@ -917,7 +986,7 @@ export default function Canvas() {
                   workshop.x_mm, workshop.y_mm,
                   ws.width_mm, ws.height_mm
                 );
-                updateDevice({
+                devicesToCommit.push({
                   ...device,
                   workshop_id: workshopId,
                   workshop_top: distances.top,
@@ -925,9 +994,10 @@ export default function Canvas() {
                   workshop_left: distances.left,
                   workshop_right: distances.right,
                 });
+                return;
               }
             } else if (device.workshop_id) {
-              updateDevice({
+              devicesToCommit.push({
                 ...device,
                 workshop_id: undefined,
                 workshop_top: undefined,
@@ -935,17 +1005,19 @@ export default function Canvas() {
                 workshop_left: undefined,
                 workshop_right: undefined,
               });
+              return;
             }
           }
+          devicesToCommit.push(device);
         }
       });
-    }
-    
-    if (isDraggingDevice && draggingDeviceId) {
-      const idsToProcess = selectedDeviceIds.length > 0 && selectedDeviceIds.includes(draggingDeviceId) 
-        ? selectedDeviceIds 
-        : [draggingDeviceId];
       
+      if (workshopChildUpdates.length > 0) {
+        updateDevicePositions(workshopChildUpdates);
+        devicesToCommit.push(...workshopChildUpdates);
+      }
+      
+      const updatedConnections: Connection[] = [];
       for (const id of idsToProcess) {
         const relatedConns = Object.values(canvas.connections).filter(
           c => c.from_device_id === id || c.to_device_id === id
@@ -976,7 +1048,7 @@ export default function Canvas() {
               pxPerMm
             );
             if (conn.length_mm !== newLengthMm) {
-              updateConnection({
+              updatedConnections.push({
                 ...conn,
                 length_mm: newLengthMm,
               });
@@ -984,23 +1056,58 @@ export default function Canvas() {
           }
         }
       }
+      
+      if (updatedConnections.length > 0) {
+        updateConnectionPositions(updatedConnections);
+      }
+      
+      commitDevicePositions(devicesToCommit);
+      if (updatedConnections.length > 0) {
+        commitConnectionPositions(updatedConnections);
+      }
     }
     
     setIsPanning(false);
-    setIsDraggingDevice(false);
-    setDraggingDeviceId(null);
+    isDraggingDeviceRef.current = false;
+    draggingDeviceIdRef.current = null;
+    dragDeviceOffsetRef.current = { x: 0, y: 0 };
+    multiDragStartPositionsRef.current = {};
+    pendingDragDevicesRef.current = [];
+    lastDragPositionsRef.current = {};
+    setDragCursor('default');
+    
+    if (isResizing && selectedDeviceId) {
+      const device = canvas.devices[selectedDeviceId];
+      if (device) {
+        commitDevicePositions([device]);
+      }
+    }
+    
     setIsResizing(false);
     setResizeHandle(null);
+    
+    if (isDraggingConnectionEnd && draggingConnectionId) {
+      const conn = canvas.connections[draggingConnectionId];
+      if (conn) {
+        commitConnectionPositions([conn]);
+      }
+    }
     setIsDraggingConnectionEnd(false);
     setDraggingConnectionEnd(null);
     setDraggingConnectionId(null);
+    
+    if (isDraggingControlPoint && draggingControlPointConnId) {
+      const conn = canvas.connections[draggingControlPointConnId];
+      if (conn) {
+        commitConnectionPositions([conn]);
+      }
+    }
     setIsDraggingControlPoint(false);
     setDraggingControlPointConnId(null);
     setDraggingControlPointType(null);
     setIsSelecting(false);
     setSelectionBoxStart(null);
     setSelectionBoxEnd(null);
-    setMultiDragStartPositions({});
   };
 
   const createDevice = async (type: string, x_mm: number, y_mm: number) => {
@@ -1683,7 +1790,7 @@ export default function Canvas() {
     }
     }
 
-    const anchors = getDeviceAnchors(device);
+    const anchors = showAnchors ? getDeviceAnchors(device) : [];
 
     const simDeviceState = simulation.devices[device.id];
     const isSimRunning = simulation.state === 'running' || simulation.state === 'paused';
@@ -2488,39 +2595,24 @@ export default function Canvas() {
     if (!canvas.settings.show_grid) return null;
     
     const step = deviceToPx(canvas.settings.grid_step_mm, zoom, pxPerMm);
-    const lines: JSX.Element[] = [];
+    const majorStep = step * 5;
     
-    for (let x = 0; x <= canvasWidthPx; x += step) {
-      const isMajor = Math.round(x / step) % 5 === 0;
-      lines.push(
-        <line
-          key={`v-${x}`}
-          x1={x + panOffset.x}
-          y1={panOffset.y}
-          x2={x + panOffset.x}
-          y2={canvasHeightPx + panOffset.y}
-          stroke={isMajor ? '#CBD5E1' : '#E5E7EB'}
-          strokeWidth={isMajor ? 1 : 0.5}
-        />
-      );
-    }
-    
-    for (let y = 0; y <= canvasHeightPx; y += step) {
-      const isMajor = Math.round(y / step) % 5 === 0;
-      lines.push(
-        <line
-          key={`h-${y}`}
-          x1={panOffset.x}
-          y1={y + panOffset.y}
-          x2={canvasWidthPx + panOffset.x}
-          y2={y + panOffset.y}
-          stroke={isMajor ? '#CBD5E1' : '#E5E7EB'}
-          strokeWidth={isMajor ? 1 : 0.5}
-        />
-      );
-    }
-    
-    return <g className="grid">{lines}</g>;
+    return (
+      <g className="grid">
+        <defs>
+          <pattern id="minorGrid" x={panOffset.x % step} y={panOffset.y % step} width={step} height={step} patternUnits="userSpaceOnUse">
+            <line x1={0} y1={0} x2={step} y2={0} stroke="#E5E7EB" strokeWidth={0.5} />
+            <line x1={0} y1={0} x2={0} y2={step} stroke="#E5E7EB" strokeWidth={0.5} />
+          </pattern>
+          <pattern id="majorGrid" x={panOffset.x % majorStep} y={panOffset.y % majorStep} width={majorStep} height={majorStep} patternUnits="userSpaceOnUse">
+            <line x1={0} y1={0} x2={majorStep} y2={0} stroke="#CBD5E1" strokeWidth={1} />
+            <line x1={0} y1={0} x2={0} y2={majorStep} stroke="#CBD5E1" strokeWidth={1} />
+          </pattern>
+        </defs>
+        <rect x={panOffset.x} y={panOffset.y} width={canvasWidthPx} height={canvasHeightPx} fill="url(#minorGrid)" />
+        <rect x={panOffset.x} y={panOffset.y} width={canvasWidthPx} height={canvasHeightPx} fill="url(#majorGrid)" />
+      </g>
+    );
   };
 
   const renderConnectionPreview = () => {
@@ -2579,7 +2671,7 @@ export default function Canvas() {
         ref={svgRef}
         width="100%"
         height="100%"
-        style={{ cursor: toolMode === 'pan' ? 'grab' : isPanning ? 'grabbing' : isDraggingDevice ? 'move' : toolMode === 'device' ? (hoveredDeviceId ? 'pointer' : 'crosshair') : toolMode === 'connection' ? (hoveredDeviceId ? 'pointer' : 'default') : 'default' }}
+        style={{ cursor: toolMode === 'pan' ? 'grab' : isPanning ? 'grabbing' : dragCursor !== 'default' ? dragCursor : toolMode === 'device' ? (hoveredDeviceId ? 'pointer' : 'crosshair') : toolMode === 'connection' ? (hoveredDeviceId ? 'pointer' : 'default') : 'default' }}
       >
         <defs>
           <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
