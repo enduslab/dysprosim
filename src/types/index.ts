@@ -607,11 +607,20 @@ export interface OptimizationIteration {
   completed_products: number;
   max_total_wip: number;
   product_avg_process_times: { product_code: string; product_name: string; avg_process_time_s: number }[];
+  completed_products_by_code?: Record<string, number>;
   is_improvement: boolean;
   improvement_details: string[];
   record_id?: string;
   layout_snapshot?: CanvasState;
   simulation_params_snapshot?: SimulationState;
+}
+
+export type OptimizationGoalType = 'production_increase' | 'production_balance' | 'wip_reduction' | 'avg_time_reduction';
+
+export interface OptimizationGoal {
+  type: OptimizationGoalType;
+  priority: number;
+  description: string;
 }
 
 export interface OptimizationResult {
@@ -621,4 +630,6 @@ export interface OptimizationResult {
   stopped_reason: string;
   baseline_completed_products: number;
   baseline_max_wip: number;
+  baseline_product_avg_process_times?: { product_code: string; product_name: string; avg_process_time_s: number }[];
+  baseline_completed_products_by_code?: Record<string, number>;
 }

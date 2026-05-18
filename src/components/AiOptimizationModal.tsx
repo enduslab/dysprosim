@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../store';
 import { save, open } from '@tauri-apps/plugin-dialog';
 import { join } from '@tauri-apps/api/path';
+import type { OptimizationGoal, OptimizationGoalType } from '../types';
 
 const changeTypeLabels: Record<string, string> = {
   resource_selection_rule: '资源选择规则',
@@ -210,12 +211,31 @@ export default function AiOptimizationModal({ onClose }: AiOptimizationModalProp
   const optimizationStatusMessage = useAppStore((s) => s.optimizationStatusMessage);
   const runAiOptimization = useAppStore((s) => s.runAiOptimization);
   const cancelAiOptimization = useAppStore((s) => s.cancelAiOptimization);
+  const resetOptimization = useAppStore((s) => s.resetOptimization);
+  const continueAiOptimization = useAppStore((s) => s.continueAiOptimization);
+  const optimizationGoals = useAppStore((s) => s.optimizationGoals);
   const currentFilePath = useAppStore((s) => s.currentFilePath);
 
   const [maxIterations, setMaxIterations] = useState(5);
+  const [continueIterations, setContinueIterations] = useState(3);
   const [savingLayouts, setSavingLayouts] = useState(false);
   const [savedFiles, setSavedFiles] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'progress' | 'report'>('progress');
+  const [goals, setGoals] = useState<OptimizationGoal[]>([]);
+
+  const goalTypeLabels: Record<OptimizationGoalType, string> = {
+    production_increase: '产量增加',
+    production_balance: '产量均衡',
+    wip_reduction: '在制品减少',
+    avg_time_reduction: '平均生产时间减少',
+  };
+  const goalTypeDescriptions: Record<OptimizationGoalType, string> = {
+    production_increase: '提高总完成产品数',
+    production_balance: '使各产品完成数量更均衡',
+    wip_reduction: '降低最大在制品数(WIP)',
+    avg_time_reduction: '缩短产品平均加工时间',
+  };
+  const allGoalTypes: OptimizationGoalType[] = ['production_increase', 'production_balance', 'wip_reduction', 'avg_time_reduction'];
 
   const [position, setPosition] = useState({ x: 0, y: -80 });
   const [isDragging, setIsDragging] = useState(false);
@@ -270,7 +290,18 @@ export default function AiOptimizationModal({ onClose }: AiOptimizationModalProp
     md += `- 最佳迭代: 第 ${r.best_iteration} 次\n`;
     md += `- 停止原因: ${r.stopped_reason}\n`;
     md += `- 基线完成产品数: ${r.baseline_completed_products}\n`;
-    md += `- 基线最大在制品数: ${r.baseline_max_wip}\n\n`;
+    md += `- 基线最大在制品数: ${r.baseline_max_wip}\n`;
+
+    if (goals.length > 0) {
+      md += `\n### 优化目标\n\n`;
+      md += `| 优先级 | 目标 | 详细说明 |\n|--------|------|----------|\n`;
+      const sortedGoals = [...goals].sort((a, b) => a.priority - b.priority);
+      for (const g of sortedGoals) {
+        md += `| ${g.priority} | ${goalTypeLabels[g.type]} | ${g.description || '-'} |\n`;
+      }
+    }
+
+    md += '\n\n';
 
     if (goodIterations.length > 0) {
       md += `## 识别为好的优化配置\n\n`;
@@ -405,8 +436,8 @@ export default function AiOptimizationModal({ onClose }: AiOptimizationModalProp
   }, [generateReportMd]);
 
   const handleStartOptimization = useCallback(() => {
-    runAiOptimization(maxIterations);
-  }, [runAiOptimization, maxIterations]);
+    runAiOptimization(maxIterations, goals);
+  }, [runAiOptimization, maxIterations, goals]);
 
   useEffect(() => {
     if (optimizationResult && !optimizationRunning) {
@@ -473,6 +504,87 @@ export default function AiOptimizationModal({ onClose }: AiOptimizationModalProp
                           className="opt-param-input"
                         />
                       </label>
+                    </div>
+                    <div className="opt-goals-section" style={{ marginTop: '12px' }}>
+                      <div style={{ fontWeight: 600, marginBottom: '6px', fontSize: '13px' }}>优化目标</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                        选择优化目标并设置优先级（1为最高），AI将按优先级判断优化效果。高优先级目标变差则判定为无效优化。
+                      </div>
+                      {allGoalTypes.map((gt) => {
+                        const existingGoal = goals.find(g => g.type === gt);
+                        const isSelected = !!existingGoal;
+                        return (
+                          <div key={gt} style={{ 
+                            border: `1px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`, 
+                            borderRadius: '6px', 
+                            padding: '8px', 
+                            marginBottom: '6px',
+                            background: isSelected ? 'rgba(59,130,246,0.05)' : 'transparent',
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                  if (isSelected) {
+                                    setGoals(prev => prev.filter(g => g.type !== gt));
+                                  } else {
+                                    const nextPriority = goals.length + 1;
+                                    setGoals(prev => [...prev, { type: gt, priority: nextPriority, description: '' }]);
+                                  }
+                                }}
+                              />
+                              <span style={{ fontWeight: 500, fontSize: '12px', flex: 1 }}>{goalTypeLabels[gt]}</span>
+                              {isSelected && (
+                                <label style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  优先级：
+                                  <select
+                                    value={existingGoal!.priority}
+                                    onChange={(e) => {
+                                      const newPriority = parseInt(e.target.value);
+                                      setGoals(prev => prev.map(g => {
+                                        if (g.type === gt) return { ...g, priority: newPriority };
+                                        if (g.priority === newPriority) return { ...g, priority: existingGoal!.priority };
+                                        return g;
+                                      }));
+                                    }}
+                                    style={{ fontSize: '11px', padding: '2px 4px', width: '42px' }}
+                                  >
+                                    {Array.from({ length: goals.length }, (_, i) => i + 1).map(n => (
+                                      <option key={n} value={n}>{n}</option>
+                                    ))}
+                                  </select>
+                                </label>
+                              )}
+                            </div>
+                            {isSelected && (
+                              <div style={{ marginTop: '6px', paddingLeft: '20px' }}>
+                                <textarea
+                                  placeholder={`详细说明（可选）：${goalTypeDescriptions[gt]}`}
+                                  value={existingGoal!.description}
+                                  onChange={(e) => {
+                                    setGoals(prev => prev.map(g => 
+                                      g.type === gt ? { ...g, description: e.target.value } : g
+                                    ));
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    fontSize: '11px',
+                                    minHeight: '36px',
+                                    resize: 'vertical',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: '4px',
+                                    padding: '4px 6px',
+                                    background: 'var(--bg-primary)',
+                                    color: 'var(--text-primary)',
+                                  }}
+                                  rows={2}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                     <div className="opt-start-note">
                       <p>优化过程中可调整的参数包括：</p>
@@ -574,7 +686,56 @@ export default function AiOptimizationModal({ onClose }: AiOptimizationModalProp
                           {savingLayouts ? '保存中...' : `保存 ${goodIterations.length} 个优化布局`}
                         </button>
                       )}
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          resetOptimization();
+                          setGoals([]);
+                          setSavedFiles([]);
+                          setMaxIterations(5);
+                        }}
+                        style={{ marginLeft: 'auto' }}
+                      >
+                        重置优化
+                      </button>
                     </div>
+
+                    {goodIterations.length > 0 && (
+                      <div style={{ marginTop: '12px', padding: '10px', border: '1px solid var(--border)', borderRadius: '6px', background: 'rgba(59,130,246,0.03)' }}>
+                        <div style={{ fontWeight: 600, fontSize: '12px', marginBottom: '6px' }}>继续优化</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                          基于最后一次有效优化结果继续迭代，优化目标不可修改。
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <label style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            追加迭代次数：
+                            <input
+                              type="number"
+                              min={1}
+                              max={10}
+                              value={continueIterations}
+                              onChange={(e) => setContinueIterations(Math.max(1, Math.min(10, parseInt(e.target.value) || 3)))}
+                              style={{ fontSize: '11px', padding: '2px 4px', width: '48px' }}
+                            />
+                          </label>
+                          <button
+                            className="btn btn-primary"
+                            onClick={() => continueAiOptimization(continueIterations)}
+                            style={{ fontSize: '12px', padding: '4px 12px' }}
+                          >
+                            继续优化
+                          </button>
+                        </div>
+                        {optimizationGoals.length > 0 && (
+                          <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                            当前目标：{[...optimizationGoals].sort((a, b) => a.priority - b.priority).map(g => {
+                              const labels: Record<string, string> = { production_increase: '产量增加', production_balance: '产量均衡', wip_reduction: '在制品减少', avg_time_reduction: '平均生产时间减少' };
+                              return `${labels[g.type]}(优先级${g.priority})`;
+                            }).join('、')}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {savedFiles.length > 0 && (
                       <div className="opt-saved-files" style={{ marginTop: '12px' }}>

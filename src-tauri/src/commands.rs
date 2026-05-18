@@ -187,6 +187,10 @@ pub fn apply_optimization_changes(
                     if upstream_id.is_empty() || downstream_id.is_empty() {
                         applied.push(format!("⚠ 添加缓冲区跳过：上游设备ID或下游设备ID为空"));
                     } else {
+                        let has_connection = canvas.connections.values().any(|c| c.from_device_id == upstream_id && c.to_device_id == downstream_id);
+                        if !has_connection {
+                            applied.push(format!("⚠ 添加缓冲区跳过：设备 {} 和 {} 之间没有直接连接", upstream_id, downstream_id));
+                        } else {
                         let upstream = canvas.devices.get(upstream_id);
                         let downstream = canvas.devices.get(downstream_id);
 
@@ -333,6 +337,7 @@ pub fn apply_optimization_changes(
                             let missing_all = if missing.is_empty() { missing2 } else if missing2.is_empty() { missing } else { format!("{}和{}", missing, missing2) };
                             applied.push(format!("⚠ 添加缓冲区跳过：找不到{}", missing_all));
                         }
+                    }
                     }
                 }
             }

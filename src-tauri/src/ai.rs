@@ -593,7 +593,7 @@ fn build_optimization_prompt() -> String {
 - **产品优先级 (product_priority)**: 1-5的整数，1为最高优先级，5为最低优先级，null表示无优先级。device_id字段必须使用产品编码（如"P1"），不能使用产品名称（如"产品1"）
 
 ## 结构性调整
-- **添加缓冲区 (add_buffer)**: 在瓶颈设备前添加缓冲区，需要指定：upstream_device_id（上游设备ID）、downstream_device_id（瓶颈设备ID）、capacity（缓冲区容量）、product_code（产品编码，必须是编码如"P1"，不能是名称如"产品1"）
+- **添加缓冲区 (add_buffer)**: 在瓶颈设备前添加缓冲区，需要指定：upstream_device_id（上游设备ID）、downstream_device_id（瓶颈设备ID）、capacity（缓冲区容量）、product_code（产品编码，必须是编码如"P1"，不能是名称如"产品1"）。**重要约束：upstream_device_id和downstream_device_id必须是当前布局中已有直接连接的两个设备，即它们之间必须存在一条运输路径。不能在没有直接连接的设备之间添加缓冲区。**
 - **复制瓶颈节点 (clone_device)**: 复制瓶颈加工节点以增加产能，需要指定：device_id（要复制的设备ID）、count（复制数量，1-3）
 
 **注意：不能修改任何设备的加工时间参数，加工时间是物理约束。**
@@ -661,7 +661,7 @@ pub async fn call_ai_optimization(
     {"type": "warehouse_selection_priorities", "value": ["nearest_distance", "lowest_utilization"]},
     {"type": "device_config", "device_id": "设备ID", "field": "release_mode", "value": "immediate"},
     {"type": "product_priority", "device_id": "产品编码(如P1,非产品名称)", "field": "priority", "value": 1},
-    {"type": "add_buffer", "value": {"upstream_device_id": "上游设备ID", "downstream_device_id": "下游瓶颈设备ID", "capacity": 10, "product_code": "产品编码(如P1,非产品名称)"}},
+    {"type": "add_buffer", "value": {"upstream_device_id": "上游设备ID", "downstream_device_id": "下游瓶颈设备ID", "capacity": 10, "product_code": "产品编码(如P1,非产品名称)"}, "note": "upstream和downstream必须是已有直接连接的两个设备"},
     {"type": "clone_device", "value": {"device_id": "要复制的设备ID", "count": 1}}
   ],
   "reasoning": "详细说明你的分析过程、发现的问题、建议的调整及预期效果"

@@ -24,6 +24,7 @@ import type {
   OptimizationSuggestion,
   OptimizationIteration,
   OptimizationResult,
+  OptimizationGoal,
 } from './types';
 
 interface AppState {
@@ -156,8 +157,11 @@ interface AppState {
   optimizationCurrentIteration: number;
   optimizationMaxIterations: number;
   optimizationStatusMessage: string;
-  runAiOptimization: (maxIterations?: number) => Promise<void>;
+  optimizationGoals: OptimizationGoal[];
+  runAiOptimization: (maxIterations?: number, goals?: OptimizationGoal[]) => Promise<void>;
   cancelAiOptimization: () => void;
+  resetOptimization: () => void;
+  continueAiOptimization: (additionalIterations: number) => Promise<void>;
 }
 
 function extractJson(text: string): string {
@@ -334,7 +338,7 @@ function validateOptimizationSuggestion(data: unknown): { valid: boolean; errors
   return { valid: errors.length === 0, errors };
 }
 
-function generateOptimizationMd(record: SimulationRecord, canvas: { products: Record<string, { name: string; color: string }>; materials: Record<string, { name: string; unit: string }>; devices: Record<string, { type: string; name: string }> }): string {
+function generateOptimizationMd(record: SimulationRecord, canvas: { products: Record<string, { name: string; color: string }>; materials: Record<string, { name: string; unit: string }>; devices: Record<string, { type: string; name: string }>; connections?: Record<string, { from_device_id: string; to_device_id: string; name: string }> }): string {
   const results = record.results;
 
   let md = `# 模拟运行统计报告\n\n`;
@@ -384,6 +388,16 @@ function generateOptimizationMd(record: SimulationRecord, canvas: { products: Re
     for (const stat of results.storage_stats) {
       const name = canvas.devices[stat.device_id]?.name || stat.device_name;
       md += `| ${stat.device_id} | ${name} | ${stat.stock} | ${stat.capacity} | ${stat.max_stock ?? '-'} | ${stat.max_waiting_entry ?? '-'} |\n`;
+    }
+  }
+
+  md += `\n## 设备连接关系\n\n`;
+  if (canvas.connections && Object.keys(canvas.connections).length > 0) {
+    md += `| 从设备ID | 从设备名称 | 到设备ID | 到设备名称 | 路径名称 |\n|---------|----------|---------|----------|--------|\n`;
+    for (const conn of Object.values(canvas.connections)) {
+      const fromName = canvas.devices[conn.from_device_id]?.name || conn.from_device_id;
+      const toName = canvas.devices[conn.to_device_id]?.name || conn.to_device_id;
+      md += `| ${conn.from_device_id} | ${fromName} | ${conn.to_device_id} | ${toName} | ${conn.name} |\n`;
     }
   }
 
@@ -1525,9 +1539,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   optimizationCurrentIteration: 0,
   optimizationMaxIterations: 5,
   optimizationStatusMessage: '',
+  optimizationGoals: [],
   cancelAiOptimization: () => set({ optimizationRunning: false, optimizationStatusMessage: '用户取消优化' }),
 
-  runAiOptimization: async (maxIterations: number = 5) => {
+  resetOptimization: () => set({
+    optimizationRunning: false,
+    optimizationResult: null,
+    optimizationCurrentIteration: 0,
+    optimizationMaxIterations: 0,
+    optimizationStatusMessage: '',
+    optimizationGoals: [],
+  }),
+
+  runAiOptimization: async (maxIterations: number = 5, goals: OptimizationGoal[] = []) => {
     const records = await get().getSimulationRecords();
     if (records.length === 0) {
       set({ optimizationStatusMessage: '没有模拟记录，请先运行模拟并保存记录' });
@@ -1538,6 +1562,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const baselineCompletedProducts = latestRecord.results.completed_products;
     const baselineMaxWip = latestRecord.results.max_total_wip;
     const baselineAvgTimes = latestRecord.results.product_avg_process_times || [];
+    const baselineCompletedProductsByCode = latestRecord.results.completed_products_by_code || {};
+
+    const sortedGoals = [...goals].sort((a, b) => a.priority - b.priority);
 
     const iterations: OptimizationIteration[] = [];
     let bestIteration = 0;
@@ -1550,6 +1577,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       optimizationCurrentIteration: 0,
       optimizationMaxIterations: maxIterations,
       optimizationStatusMessage: '开始AI优化...',
+      optimizationGoals: goals,
     });
 
     const baselineCanvasSnapshot = JSON.parse(JSON.stringify(get().canvas)) as CanvasState;
@@ -1582,8 +1610,29 @@ export const useAppStore = create<AppState>((set, get) => ({
           products: currentCanvas.products,
           materials: currentCanvas.materials,
           devices: currentCanvas.devices,
+          connections: currentCanvas.connections,
         };
         const mdContent = generateOptimizationMd(currentRecord, canvasData);
+        let mdContentWithGoals: string;
+
+        if (sortedGoals.length > 0) {
+          const goalLabels: Record<string, string> = {
+            production_increase: '产量增加',
+            production_balance: '产量均衡',
+            wip_reduction: '在制品减少',
+            avg_time_reduction: '平均生产时间减少',
+          };
+          let goalSection = '\n## 优化目标\n\n';
+          goalSection += '请按照以下优先级顺序进行优化（优先级1为最高优先级）：\n\n';
+          goalSection += '| 优先级 | 目标 | 详细说明 |\n|--------|------|----------|\n';
+          for (const goal of sortedGoals) {
+            goalSection += `| ${goal.priority} | ${goalLabels[goal.type] || goal.type} | ${goal.description || '-'} |\n`;
+          }
+          goalSection += '\n**判断优化是否有效的规则**：按优先级从高到低判断，如果最高优先级目标变差，则本次优化无效；如果最高优先级目标不变，则按下一优先级目标判断；只有当高优先级目标不变或改善时，才看低优先级目标的改善。\n';
+          mdContentWithGoals = mdContent + goalSection;
+        } else {
+          mdContentWithGoals = mdContent;
+        }
 
         const previousChanges = iterations.map(it => ({
           iteration: it.iteration,
@@ -1598,7 +1647,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         let aiResponse: string;
         try {
           aiResponse = await invoke<string>('call_ai_optimization', {
-            mdContent,
+            mdContent: mdContentWithGoals,
             iteration: i,
             maxIterations,
             previousChangesJson,
@@ -1690,28 +1739,101 @@ export const useAppStore = create<AppState>((set, get) => ({
         const currentCompletedProducts = simResults.completed_products;
         const currentMaxWip = simResults.max_total_wip;
         const currentAvgTimes = simResults.product_avg_process_times || [];
+        const currentCompletedProductsByCode = simResults.completed_products_by_code || {};
 
         const improvementDetails: string[] = [];
         let isImprovement = false;
 
-        const prevCompleted = iterations.length > 0 ? iterations[iterations.length - 1].completed_products : baselineCompletedProducts;
-        const prevMaxWip = iterations.length > 0 ? iterations[iterations.length - 1].max_total_wip : baselineMaxWip;
-        const prevAvgTimes = iterations.length > 0 ? iterations[iterations.length - 1].product_avg_process_times : baselineAvgTimes;
+        const lastGoodIteration = [...iterations].reverse().find(it => it.is_improvement);
+        const prevCompleted = lastGoodIteration ? lastGoodIteration.completed_products : baselineCompletedProducts;
+        const prevMaxWip = lastGoodIteration ? lastGoodIteration.max_total_wip : baselineMaxWip;
+        const prevAvgTimes = lastGoodIteration ? lastGoodIteration.product_avg_process_times : baselineAvgTimes;
+        const prevCompletedProductsByCode = lastGoodIteration ? (lastGoodIteration.completed_products_by_code || {}) : baselineCompletedProductsByCode;
 
-        if (currentCompletedProducts > prevCompleted) {
-          isImprovement = true;
-          improvementDetails.push(`完成产品数: ${prevCompleted} → ${currentCompletedProducts} (+${currentCompletedProducts - prevCompleted})`);
-        }
-        if (currentMaxWip < prevMaxWip) {
-          isImprovement = true;
-          improvementDetails.push(`最大在制品数: ${prevMaxWip} → ${currentMaxWip} (-${prevMaxWip - currentMaxWip})`);
-        }
-
-        for (const cur of currentAvgTimes) {
-          const prev = prevAvgTimes.find(p => p.product_code === cur.product_code);
-          if (prev && cur.avg_process_time_s < prev.avg_process_time_s) {
+        if (sortedGoals.length > 0) {
+          let decided = false;
+          for (const goal of sortedGoals) {
+            if (decided) break;
+            switch (goal.type) {
+              case 'production_increase': {
+                if (currentCompletedProducts > prevCompleted) {
+                  isImprovement = true;
+                  decided = true;
+                  improvementDetails.push(`完成产品数: ${prevCompleted} → ${currentCompletedProducts} (+${currentCompletedProducts - prevCompleted})`);
+                } else if (currentCompletedProducts < prevCompleted) {
+                  isImprovement = false;
+                  decided = true;
+                  improvementDetails.push(`完成产品数: ${prevCompleted} → ${currentCompletedProducts} (-${prevCompleted - currentCompletedProducts})`);
+                } else {
+                  improvementDetails.push(`完成产品数: ${prevCompleted} → ${currentCompletedProducts} (不变)`);
+                }
+                break;
+              }
+              case 'production_balance': {
+                const prevValues = Object.values(prevCompletedProductsByCode);
+                const curValues = Object.values(currentCompletedProductsByCode);
+                const prevStdDev = prevValues.length > 1 ? Math.sqrt(prevValues.reduce((s, v) => s + (v - prevValues.reduce((a, b) => a + b, 0) / prevValues.length) ** 2, 0) / prevValues.length) : 0;
+                const curStdDev = curValues.length > 1 ? Math.sqrt(curValues.reduce((s, v) => s + (v - curValues.reduce((a, b) => a + b, 0) / curValues.length) ** 2, 0) / curValues.length) : 0;
+                if (curStdDev < prevStdDev) {
+                  isImprovement = true;
+                  decided = true;
+                  improvementDetails.push(`产量均衡度(标准差): ${prevStdDev.toFixed(1)} → ${curStdDev.toFixed(1)} (改善)`);
+                } else if (curStdDev > prevStdDev) {
+                  isImprovement = false;
+                  decided = true;
+                  improvementDetails.push(`产量均衡度(标准差): ${prevStdDev.toFixed(1)} → ${curStdDev.toFixed(1)} (变差)`);
+                } else {
+                  improvementDetails.push(`产量均衡度(标准差): ${prevStdDev.toFixed(1)} → ${curStdDev.toFixed(1)} (不变)`);
+                }
+                break;
+              }
+              case 'wip_reduction': {
+                if (currentMaxWip < prevMaxWip) {
+                  isImprovement = true;
+                  decided = true;
+                  improvementDetails.push(`最大在制品数: ${prevMaxWip} → ${currentMaxWip} (-${prevMaxWip - currentMaxWip})`);
+                } else if (currentMaxWip > prevMaxWip) {
+                  isImprovement = false;
+                  decided = true;
+                  improvementDetails.push(`最大在制品数: ${prevMaxWip} → ${currentMaxWip} (+${currentMaxWip - prevMaxWip})`);
+                } else {
+                  improvementDetails.push(`最大在制品数: ${prevMaxWip} → ${currentMaxWip} (不变)`);
+                }
+                break;
+              }
+              case 'avg_time_reduction': {
+                const prevTotalAvg = prevAvgTimes.reduce((s, p) => s + p.avg_process_time_s, 0);
+                const curTotalAvg = currentAvgTimes.reduce((s, p) => s + p.avg_process_time_s, 0);
+                if (curTotalAvg < prevTotalAvg) {
+                  isImprovement = true;
+                  decided = true;
+                  improvementDetails.push(`平均加工时间总和: ${prevTotalAvg.toFixed(2)}s → ${curTotalAvg.toFixed(2)}s (改善)`);
+                } else if (curTotalAvg > prevTotalAvg) {
+                  isImprovement = false;
+                  decided = true;
+                  improvementDetails.push(`平均加工时间总和: ${prevTotalAvg.toFixed(2)}s → ${curTotalAvg.toFixed(2)}s (变差)`);
+                } else {
+                  improvementDetails.push(`平均加工时间总和: ${prevTotalAvg.toFixed(2)}s → ${curTotalAvg.toFixed(2)}s (不变)`);
+                }
+                break;
+              }
+            }
+          }
+        } else {
+          if (currentCompletedProducts > prevCompleted) {
             isImprovement = true;
-            improvementDetails.push(`${cur.product_name || cur.product_code} 平均加工时间: ${prev.avg_process_time_s.toFixed(2)}s → ${cur.avg_process_time_s.toFixed(2)}s`);
+            improvementDetails.push(`完成产品数: ${prevCompleted} → ${currentCompletedProducts} (+${currentCompletedProducts - prevCompleted})`);
+          }
+          if (currentMaxWip < prevMaxWip) {
+            isImprovement = true;
+            improvementDetails.push(`最大在制品数: ${prevMaxWip} → ${currentMaxWip} (-${prevMaxWip - currentMaxWip})`);
+          }
+          for (const cur of currentAvgTimes) {
+            const prev = prevAvgTimes.find(p => p.product_code === cur.product_code);
+            if (prev && cur.avg_process_time_s < prev.avg_process_time_s) {
+              isImprovement = true;
+              improvementDetails.push(`${cur.product_name || cur.product_code} 平均加工时间: ${prev.avg_process_time_s.toFixed(2)}s → ${cur.avg_process_time_s.toFixed(2)}s`);
+            }
           }
         }
 
@@ -1756,6 +1878,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           completed_products: currentCompletedProducts,
           max_total_wip: currentMaxWip,
           product_avg_process_times: currentAvgTimes,
+          completed_products_by_code: currentCompletedProductsByCode,
           is_improvement: isImprovement,
           improvement_details: improvementDetails,
           record_id: recordId,
@@ -1767,6 +1890,26 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         if (isImprovement) {
           bestIteration = i;
+        }
+
+        let consecutiveBad = 0;
+        let hasGoodAfterLastBad = false;
+        for (let j = iterations.length - 1; j >= 0; j--) {
+          if (!iterations[j].is_improvement) {
+            consecutiveBad++;
+          } else {
+            hasGoodAfterLastBad = true;
+            break;
+          }
+        }
+
+        if (consecutiveBad >= 3) {
+          stoppedReason = `连续${consecutiveBad}次优化结果均不如基线，提前停止优化`;
+          break;
+        }
+        if (hasGoodAfterLastBad && consecutiveBad >= 2) {
+          stoppedReason = `最近1次有效优化后连续${consecutiveBad}次结果不如基线，提前停止优化`;
+          break;
         }
 
         if (i >= maxIterations) {
@@ -1793,6 +1936,433 @@ export const useAppStore = create<AppState>((set, get) => ({
       stopped_reason: stoppedReason,
       baseline_completed_products: baselineCompletedProducts,
       baseline_max_wip: baselineMaxWip,
+      baseline_product_avg_process_times: baselineAvgTimes,
+      baseline_completed_products_by_code: baselineCompletedProductsByCode,
+    };
+
+    set({
+      optimizationRunning: false,
+      optimizationResult: result,
+      optimizationStatusMessage: stoppedReason,
+    });
+  },
+
+  continueAiOptimization: async (additionalIterations: number = 3) => {
+    const prevResult = get().optimizationResult;
+    if (!prevResult) return;
+
+    const goals = get().optimizationGoals;
+    const sortedGoals = [...goals].sort((a, b) => a.priority - b.priority);
+
+    const lastGoodIteration = [...prevResult.iterations].reverse().find(it => it.is_improvement);
+    if (!lastGoodIteration) return;
+
+    const rollbackSnapshot = lastGoodIteration.layout_snapshot;
+    const rollbackSimState = lastGoodIteration.simulation_params_snapshot;
+    if (!rollbackSnapshot) return;
+
+    try {
+      await invoke('set_canvas_state', { canvasState: JSON.parse(JSON.stringify(rollbackSnapshot)) });
+      if (rollbackSimState) {
+        await invoke('set_resource_selection_rule', { rule: rollbackSimState.resource_selection_rule });
+        await invoke('set_product_selection_strategy', { strategy: rollbackSimState.product_selection_strategy });
+        await invoke('set_warehouse_selection_priorities', { priorities: rollbackSimState.warehouse_selection_priorities || [] });
+        await invoke('set_consider_product_priority', { consider: rollbackSimState.consider_product_priority ?? false });
+        await invoke('set_utilization_sample_interval', { intervalS: rollbackSimState.utilization_sample_interval_s || 1.0 });
+        if (rollbackSimState.simulation_mode) {
+          await invoke('set_simulation_mode', { mode: rollbackSimState.simulation_mode });
+        }
+      }
+      await get().loadCanvasState();
+    } catch {
+      set({ optimizationStatusMessage: '继续优化失败：无法恢复到上次好的布局' });
+      return;
+    }
+
+    const records = await get().getSimulationRecords();
+    if (records.length === 0) {
+      set({ optimizationStatusMessage: '没有模拟记录，请先运行模拟并保存记录' });
+      return;
+    }
+
+    const baselineCompletedProducts = prevResult.baseline_completed_products;
+    const baselineMaxWip = prevResult.baseline_max_wip;
+    const baselineAvgTimes = prevResult.baseline_product_avg_process_times || [];
+    const baselineCompletedProductsByCode = prevResult.baseline_completed_products_by_code || {};
+
+    const iterations: OptimizationIteration[] = [...prevResult.iterations];
+    let bestIteration = prevResult.best_iteration;
+    let stoppedReason = '';
+    let cancelled = false;
+
+    const startIteration = iterations.length + 1;
+    const endIteration = iterations.length + additionalIterations;
+
+    const baselineCanvasSnapshot = JSON.parse(JSON.stringify(rollbackSnapshot)) as CanvasState;
+    let baselineSimState: SimulationState | undefined;
+    try {
+      baselineSimState = await invoke<SimulationState>('get_simulation_state');
+    } catch {
+      baselineSimState = undefined;
+    }
+
+    set({
+      optimizationRunning: true,
+      optimizationCurrentIteration: 0,
+      optimizationMaxIterations: endIteration,
+      optimizationStatusMessage: '继续AI优化...',
+    });
+
+    try {
+      for (let i = startIteration; i <= endIteration; i++) {
+        if (!get().optimizationRunning) {
+          cancelled = true;
+          stoppedReason = '用户取消优化';
+          break;
+        }
+
+        set({ optimizationCurrentIteration: i, optimizationStatusMessage: `第 ${i}/${endIteration} 次迭代：AI分析中...` });
+
+        const currentRecords = await get().getSimulationRecords();
+        const currentRecord = currentRecords.length > 0 ? currentRecords[currentRecords.length - 1] : null;
+        if (!currentRecord) {
+          stoppedReason = '没有可用的模拟记录';
+          break;
+        }
+
+        const currentCanvas = get().canvas;
+        const canvasData = {
+          products: currentCanvas.products,
+          materials: currentCanvas.materials,
+          devices: currentCanvas.devices,
+          connections: currentCanvas.connections,
+        };
+        const mdContent = generateOptimizationMd(currentRecord, canvasData);
+        let mdContentWithGoals: string;
+
+        if (sortedGoals.length > 0) {
+          const goalLabels: Record<string, string> = {
+            production_increase: '产量增加',
+            production_balance: '产量均衡',
+            wip_reduction: '在制品减少',
+            avg_time_reduction: '平均生产时间减少',
+          };
+          let goalSection = '\n## 优化目标\n\n';
+          goalSection += '请按照以下优先级顺序进行优化（优先级1为最高优先级）：\n\n';
+          goalSection += '| 优先级 | 目标 | 详细说明 |\n|--------|------|----------|\n';
+          for (const goal of sortedGoals) {
+            goalSection += `| ${goal.priority} | ${goalLabels[goal.type] || goal.type} | ${goal.description || '-'} |\n`;
+          }
+          goalSection += '\n**判断优化是否有效的规则**：按优先级从高到低判断，如果最高优先级目标变差，则本次优化无效；如果最高优先级目标不变，则按下一优先级目标判断；只有当高优先级目标不变或改善时，才看低优先级目标的改善。\n';
+          mdContentWithGoals = mdContent + goalSection;
+        } else {
+          mdContentWithGoals = mdContent;
+        }
+
+        const previousChanges = iterations.map(it => ({
+          iteration: it.iteration,
+          changes: it.applied_changes,
+          is_improvement: it.is_improvement,
+          improvement_details: it.improvement_details,
+          completed_products: it.completed_products,
+          max_total_wip: it.max_total_wip,
+        }));
+        const previousChangesJson = JSON.stringify(previousChanges);
+
+        let aiResponse: string;
+        try {
+          aiResponse = await invoke<string>('call_ai_optimization', {
+            mdContent: mdContentWithGoals,
+            iteration: i,
+            maxIterations: endIteration,
+            previousChangesJson,
+          });
+        } catch (error) {
+          stoppedReason = `AI分析失败: ${error}`;
+          break;
+        }
+
+        let suggestion: OptimizationSuggestion | null = null;
+        let lastValidationErrors: string[] = [];
+        const MAX_JSON_RETRIES = 10;
+
+        for (let retry = 0; retry < MAX_JSON_RETRIES; retry++) {
+          let parsed: unknown;
+          try {
+            const jsonStr = extractJson(aiResponse);
+            parsed = JSON.parse(jsonStr);
+          } catch (parseError) {
+            lastValidationErrors = [`JSON解析失败: ${parseError}`];
+          }
+
+          if (parsed !== undefined) {
+            const validation = validateOptimizationSuggestion(parsed);
+            if (validation.valid) {
+              suggestion = parsed as OptimizationSuggestion;
+              break;
+            }
+            lastValidationErrors = validation.errors;
+          }
+
+          if (retry < MAX_JSON_RETRIES - 1) {
+            set({ optimizationStatusMessage: `第 ${i}/${endIteration} 次迭代：AI返回格式有误，正在重新生成 (${retry + 2}/${MAX_JSON_RETRIES})...` });
+
+            const errorFeedback = `你上一次返回的JSON格式有误，错误如下：\n${lastValidationErrors.map((e, idx) => `${idx + 1}. ${e}`).join('\n')}\n\n请严格按照要求的JSON格式重新生成，确保：\n- can_optimize 和 should_continue 是布尔值\n- changes 是数组，每个元素有 type 和 value 字段\n- type 必须是: ${VALID_CHANGE_TYPES.join(', ')}\n- value 的格式必须与 type 匹配\n- 不要包含任何JSON之外的文字\n\n请直接返回修正后的JSON：`;
+
+            try {
+              aiResponse = await invoke<string>('call_ai_optimization', {
+                mdContent: errorFeedback,
+                iteration: i,
+                maxIterations: endIteration,
+                previousChangesJson,
+              });
+            } catch (error) {
+              stoppedReason = `AI重新生成失败: ${error}`;
+              break;
+            }
+          }
+        }
+
+        if (stoppedReason) break;
+
+        if (!suggestion) {
+          stoppedReason = `AI返回JSON格式验证失败（已重试${MAX_JSON_RETRIES}次），主要错误: ${lastValidationErrors.slice(0, 3).join('; ')}`;
+          break;
+        }
+
+        if (!suggestion.can_optimize || suggestion.changes.length === 0) {
+          stoppedReason = suggestion.reasoning || 'AI判断无法继续优化';
+          break;
+        }
+
+        set({ optimizationStatusMessage: `第 ${i}/${endIteration} 次迭代：应用配置变更...` });
+
+        let appliedChanges: string[];
+        try {
+          appliedChanges = await invoke<string[]>('apply_optimization_changes', {
+            changes: suggestion.changes,
+          });
+        } catch (error) {
+          stoppedReason = `应用配置变更失败: ${error}`;
+          break;
+        }
+
+        await get().loadCanvasState();
+
+        const currentSimState = await invoke<SimulationState>('get_simulation_state');
+
+        set({ optimizationStatusMessage: `第 ${i}/${endIteration} 次迭代：运行模拟...` });
+
+        let simResults: SimulationResults;
+        try {
+          simResults = await invoke<SimulationResults>('run_simulation_to_completion');
+        } catch (error) {
+          stoppedReason = `模拟运行失败: ${error}`;
+          break;
+        }
+
+        const currentCompletedProducts = simResults.completed_products;
+        const currentMaxWip = simResults.max_total_wip;
+        const currentAvgTimes = simResults.product_avg_process_times || [];
+        const currentCompletedProductsByCode = simResults.completed_products_by_code || {};
+
+        const improvementDetails: string[] = [];
+        let isImprovement = false;
+
+        const prevGoodIteration = [...iterations].reverse().find(it => it.is_improvement);
+        const prevCompleted = prevGoodIteration ? prevGoodIteration.completed_products : baselineCompletedProducts;
+        const prevMaxWip = prevGoodIteration ? prevGoodIteration.max_total_wip : baselineMaxWip;
+        const prevAvgTimes = prevGoodIteration ? prevGoodIteration.product_avg_process_times : baselineAvgTimes;
+        const prevCompletedProductsByCode = prevGoodIteration ? (prevGoodIteration.completed_products_by_code || {}) : baselineCompletedProductsByCode;
+
+        if (sortedGoals.length > 0) {
+          let decided = false;
+          for (const goal of sortedGoals) {
+            if (decided) break;
+            switch (goal.type) {
+              case 'production_increase': {
+                if (currentCompletedProducts > prevCompleted) {
+                  isImprovement = true;
+                  decided = true;
+                  improvementDetails.push(`完成产品数: ${prevCompleted} → ${currentCompletedProducts} (+${currentCompletedProducts - prevCompleted})`);
+                } else if (currentCompletedProducts < prevCompleted) {
+                  isImprovement = false;
+                  decided = true;
+                  improvementDetails.push(`完成产品数: ${prevCompleted} → ${currentCompletedProducts} (-${prevCompleted - currentCompletedProducts})`);
+                } else {
+                  improvementDetails.push(`完成产品数: ${prevCompleted} → ${currentCompletedProducts} (不变)`);
+                }
+                break;
+              }
+              case 'production_balance': {
+                const prevValues = Object.values(prevCompletedProductsByCode);
+                const curValues = Object.values(currentCompletedProductsByCode);
+                const prevStdDev = prevValues.length > 1 ? Math.sqrt(prevValues.reduce((s, v) => s + (v - prevValues.reduce((a, b) => a + b, 0) / prevValues.length) ** 2, 0) / prevValues.length) : 0;
+                const curStdDev = curValues.length > 1 ? Math.sqrt(curValues.reduce((s, v) => s + (v - curValues.reduce((a, b) => a + b, 0) / curValues.length) ** 2, 0) / curValues.length) : 0;
+                if (curStdDev < prevStdDev) {
+                  isImprovement = true;
+                  decided = true;
+                  improvementDetails.push(`产量均衡度(标准差): ${prevStdDev.toFixed(1)} → ${curStdDev.toFixed(1)} (改善)`);
+                } else if (curStdDev > prevStdDev) {
+                  isImprovement = false;
+                  decided = true;
+                  improvementDetails.push(`产量均衡度(标准差): ${prevStdDev.toFixed(1)} → ${curStdDev.toFixed(1)} (变差)`);
+                } else {
+                  improvementDetails.push(`产量均衡度(标准差): ${prevStdDev.toFixed(1)} → ${curStdDev.toFixed(1)} (不变)`);
+                }
+                break;
+              }
+              case 'wip_reduction': {
+                if (currentMaxWip < prevMaxWip) {
+                  isImprovement = true;
+                  decided = true;
+                  improvementDetails.push(`最大在制品数: ${prevMaxWip} → ${currentMaxWip} (-${prevMaxWip - currentMaxWip})`);
+                } else if (currentMaxWip > prevMaxWip) {
+                  isImprovement = false;
+                  decided = true;
+                  improvementDetails.push(`最大在制品数: ${prevMaxWip} → ${currentMaxWip} (+${currentMaxWip - prevMaxWip})`);
+                } else {
+                  improvementDetails.push(`最大在制品数: ${prevMaxWip} → ${currentMaxWip} (不变)`);
+                }
+                break;
+              }
+              case 'avg_time_reduction': {
+                const prevTotalAvg = prevAvgTimes.reduce((s, p) => s + p.avg_process_time_s, 0);
+                const curTotalAvg = currentAvgTimes.reduce((s, p) => s + p.avg_process_time_s, 0);
+                if (curTotalAvg < prevTotalAvg) {
+                  isImprovement = true;
+                  decided = true;
+                  improvementDetails.push(`平均加工时间总和: ${prevTotalAvg.toFixed(2)}s → ${curTotalAvg.toFixed(2)}s (改善)`);
+                } else if (curTotalAvg > prevTotalAvg) {
+                  isImprovement = false;
+                  decided = true;
+                  improvementDetails.push(`平均加工时间总和: ${prevTotalAvg.toFixed(2)}s → ${curTotalAvg.toFixed(2)}s (变差)`);
+                } else {
+                  improvementDetails.push(`平均加工时间总和: ${prevTotalAvg.toFixed(2)}s → ${curTotalAvg.toFixed(2)}s (不变)`);
+                }
+                break;
+              }
+            }
+          }
+        } else {
+          if (currentCompletedProducts > prevCompleted) {
+            isImprovement = true;
+            improvementDetails.push(`完成产品数: ${prevCompleted} → ${currentCompletedProducts} (+${currentCompletedProducts - prevCompleted})`);
+          }
+          if (currentMaxWip < prevMaxWip) {
+            isImprovement = true;
+            improvementDetails.push(`最大在制品数: ${prevMaxWip} → ${currentMaxWip} (-${prevMaxWip - currentMaxWip})`);
+          }
+          for (const cur of currentAvgTimes) {
+            const prev = prevAvgTimes.find(p => p.product_code === cur.product_code);
+            if (prev && cur.avg_process_time_s < prev.avg_process_time_s) {
+              isImprovement = true;
+              improvementDetails.push(`${cur.product_name || cur.product_code} 平均加工时间: ${prev.avg_process_time_s.toFixed(2)}s → ${cur.avg_process_time_s.toFixed(2)}s`);
+            }
+          }
+        }
+
+        let recordId: string | undefined;
+        let currentCanvasState = get().canvas;
+
+        if (isImprovement) {
+          try {
+            recordId = await invoke<string>('save_simulation_record');
+            await get().loadCanvasState();
+            currentCanvasState = get().canvas;
+          } catch {
+            recordId = undefined;
+          }
+        } else {
+          const lastGood = [...iterations].reverse().find(it => it.is_improvement);
+          const rollbackSnap = lastGood?.layout_snapshot || baselineCanvasSnapshot;
+          const rollbackSim = lastGood?.simulation_params_snapshot || baselineSimState;
+          try {
+            await invoke('set_canvas_state', { canvasState: JSON.parse(JSON.stringify(rollbackSnap)) });
+            if (rollbackSim) {
+              await invoke('set_resource_selection_rule', { rule: rollbackSim.resource_selection_rule });
+              await invoke('set_product_selection_strategy', { strategy: rollbackSim.product_selection_strategy });
+              await invoke('set_warehouse_selection_priorities', { priorities: rollbackSim.warehouse_selection_priorities || [] });
+              await invoke('set_consider_product_priority', { consider: rollbackSim.consider_product_priority ?? false });
+              await invoke('set_utilization_sample_interval', { intervalS: rollbackSim.utilization_sample_interval_s || 1.0 });
+              if (rollbackSim.simulation_mode) {
+                await invoke('set_simulation_mode', { mode: rollbackSim.simulation_mode });
+              }
+            }
+            await get().loadCanvasState();
+          } catch {
+            // ignore rollback errors
+          }
+        }
+
+        const iteration: OptimizationIteration = {
+          iteration: i,
+          changes: suggestion.changes,
+          applied_changes: appliedChanges,
+          reasoning: suggestion.reasoning,
+          completed_products: currentCompletedProducts,
+          max_total_wip: currentMaxWip,
+          product_avg_process_times: currentAvgTimes,
+          completed_products_by_code: currentCompletedProductsByCode,
+          is_improvement: isImprovement,
+          improvement_details: improvementDetails,
+          record_id: recordId,
+          layout_snapshot: isImprovement ? JSON.parse(JSON.stringify(currentCanvasState)) as CanvasState : undefined,
+          simulation_params_snapshot: isImprovement ? JSON.parse(JSON.stringify(currentSimState)) as SimulationState : undefined,
+        };
+
+        iterations.push(iteration);
+
+        if (isImprovement) {
+          bestIteration = i;
+        }
+
+        let consecutiveBad = 0;
+        let hasGoodAfterLastBad = false;
+        for (let j = iterations.length - 1; j >= 0; j--) {
+          if (!iterations[j].is_improvement) {
+            consecutiveBad++;
+          } else {
+            hasGoodAfterLastBad = true;
+            break;
+          }
+        }
+
+        if (consecutiveBad >= 3) {
+          stoppedReason = `连续${consecutiveBad}次优化结果均不如上次好的结果，提前停止优化`;
+          break;
+        }
+        if (hasGoodAfterLastBad && consecutiveBad >= 2) {
+          stoppedReason = `最近1次有效优化后连续${consecutiveBad}次结果不如上次好的结果，提前停止优化`;
+          break;
+        }
+
+        if (i >= endIteration) {
+          if (suggestion.should_continue) {
+            stoppedReason = `已达到最大迭代次数(${endIteration})，AI建议可继续优化`;
+          } else {
+            stoppedReason = `已达到最大迭代次数(${endIteration})`;
+          }
+          break;
+        }
+      }
+
+      if (!stoppedReason && !cancelled) {
+        stoppedReason = '优化完成';
+      }
+    } catch (error) {
+      stoppedReason = `优化过程出错: ${error}`;
+    }
+
+    const result: OptimizationResult = {
+      iterations,
+      total_iterations: iterations.length,
+      best_iteration: bestIteration,
+      stopped_reason: stoppedReason,
+      baseline_completed_products: baselineCompletedProducts,
+      baseline_max_wip: baselineMaxWip,
+      baseline_product_avg_process_times: baselineAvgTimes,
+      baseline_completed_products_by_code: baselineCompletedProductsByCode,
     };
 
     set({
