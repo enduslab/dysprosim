@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { message } from '@tauri-apps/plugin-dialog';
 import { useAppStore } from '../store';
 import type { ResourceSelectionRule, Device, SimulationMode, SimulationTimeUnit, EndNode, WarehouseSelectionPriority, ProductSelectionStrategy } from '../types';
 import { calculateConnectionLengthMm, calculateElbowIntermediatePoints, getDeviceAnchorPx } from '../utils/connectionUtils';
@@ -46,6 +47,7 @@ export default function SimControlPanel() {
   const setDeadline = useAppStore((state) => state.setDeadline);
   const loadSimulationState = useAppStore((state) => state.loadSimulationState);
   const saveSimulationRecord = useAppStore((state) => state.saveSimulationRecord);
+  const handleSaveLayout = useAppStore((state) => state.handleSaveLayout);
   const openRecordsModal = useAppStore((state) => state.openRecordsModal);
   const openProductRoutesModal = useAppStore((state) => state.openProductRoutesModal);
   const showProductRoutesModal = useAppStore((state) => state.showProductRoutesModal);
@@ -194,6 +196,28 @@ export default function SimControlPanel() {
   useEffect(() => {
     loadSimulationState();
   }, [loadSimulationState]);
+
+  const completionHandledRef = useRef(false);
+  useEffect(() => {
+    if (simulation.state === 'completed' && !completionHandledRef.current) {
+      completionHandledRef.current = true;
+      (async () => {
+        await message('模拟已结束', {
+          title: '模拟完成',
+          kind: 'info',
+        });
+        try {
+          await saveSimulationRecord();
+        } catch (e) {
+          console.error('自动保存模拟记录失败:', e);
+        }
+        completionHandledRef.current = false;
+      })();
+    }
+    if (simulation.state !== 'completed') {
+      completionHandledRef.current = false;
+    }
+  }, [simulation.state, saveSimulationRecord]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -540,17 +564,13 @@ export default function SimControlPanel() {
         <button
           className="sim-control-btn"
           onClick={async () => {
-            if (isCompleted || isPaused) {
-              try {
-                await saveSimulationRecord();
-                alert('模拟记录已保存');
-              } catch (error) {
-                console.error('保存模拟记录失败:', error);
-              }
+            try {
+              await handleSaveLayout();
+            } catch (error) {
+              console.error('保存布局失败:', error);
             }
           }}
-          title="保存模拟记录"
-          disabled={!isCompleted && !isPaused}
+          title="保存布局"
         >
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />

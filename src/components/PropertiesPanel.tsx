@@ -1930,15 +1930,7 @@ function FeedSettingsTab({ device, onChange }: { device: StartNode; onChange: (f
       {device.feed_mode === 'paced' && (
         <div className="property-row">
           <span className="property-label">投料间隔</span>
-          <input
-            type="number"
-            className="property-input"
-            value={device.feed_interval_s}
-            onChange={(e) => onChange('feed_interval_s', parseFloat(e.target.value))}
-            step="0.1"
-            min="0.1"
-          />
-          <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+          <TimeInputHms value={device.feed_interval_s} onChange={(v) => onChange('feed_interval_s', v || 0)} />
         </div>
       )}
     </div>

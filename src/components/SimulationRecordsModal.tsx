@@ -620,15 +620,37 @@ function GanttChart({
   const allProducts = [...new Set(data.map(d => d.productCode))];
   
   const maxTime = durationS || Math.max(...data.map(d => d.endTime), 1);
-  const timeStep = 300;
+
+  let displayUnit: string;
+  let displayUnitSeconds: number;
+  let durationInDisplayUnit: number;
+  if (maxTime >= 86400) {
+    displayUnit = '小时';
+    displayUnitSeconds = 3600;
+    durationInDisplayUnit = maxTime / 3600;
+  } else if (maxTime >= 3600) {
+    displayUnit = '分钟';
+    displayUnitSeconds = 60;
+    durationInDisplayUnit = maxTime / 60;
+  } else if (maxTime >= 60) {
+    displayUnit = '秒';
+    displayUnitSeconds = 1;
+    durationInDisplayUnit = maxTime;
+  } else {
+    displayUnit = '秒';
+    displayUnitSeconds = 1;
+    durationInDisplayUnit = maxTime;
+  }
+
+  const tickIntervalInDisplayUnit = Math.max(Math.floor(durationInDisplayUnit / 10), 1);
+  const timeStep = tickIntervalInDisplayUnit * displayUnitSeconds;
   const numTimeSteps = Math.ceil(maxTime / timeStep);
   
   const rowHeight = chartHeight / devices.length;
   const defaultColors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16', '#F97316', '#14B8A6'];
 
   const formatTimeLabel = (seconds: number): string => {
-    const minutes = Math.floor(seconds / 60);
-    return `${minutes}`;
+    return `${Math.floor(seconds / displayUnitSeconds)}`;
   };
 
   const getProductColor = (productCode: string): string => {
@@ -775,7 +797,7 @@ function GanttChart({
           fontSize="11"
           fill="var(--text-muted)"
         >
-          时间 (分钟)
+          时间 ({displayUnit})
         </text>
       </svg>
       
@@ -2565,7 +2587,7 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
                       <table className="stats-table">
                         <thead>
                           <tr>
-                            <th>时间(秒)</th>
+                            <th>时间</th>
                             <th>事件类型</th>
                             <th>投料状态</th>
                             <th>产品编码</th>
@@ -2575,7 +2597,7 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
                         <tbody>
                           {getFeedRecords(selectedRecord.results)!.map((record, idx) => (
                             <tr key={idx}>
-                              <td>{record.time_s.toFixed(2)}</td>
+                              <td>{formatTime(record.time_s)}</td>
                               <td>{record.event_type}</td>
                               <td>{record.feed_status}</td>
                               <td>{record.product_code}</td>
@@ -2598,7 +2620,7 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
                             <th>序号</th>
                             <th>产品编码</th>
                             <th>产品名称</th>
-                            <th>到达时间(秒)</th>
+                            <th>到达时间</th>
                             <th>经过节点</th>
                           </tr>
                         </thead>
@@ -2619,7 +2641,7 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
                                 </span>
                               </td>
                               <td>{record.product_name}</td>
-                              <td>{record.arrive_time_s.toFixed(2)}</td>
+                              <td>{formatTime(record.arrive_time_s)}</td>
                               <td style={{ fontSize: '11px', maxWidth: '300px', whiteSpace: 'pre-wrap' }}>
                                 {record.node_visits.map((v, i) => `${v.node_name}${i < record.node_visits.length - 1 ? ' → ' : ''}`).join('')}
                               </td>
