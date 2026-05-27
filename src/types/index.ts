@@ -22,6 +22,12 @@ export type LineStyle = 'straight' | 'curve' | 'free_polyline' | 'elbow';
 
 export type SimulationMode = 'fixed_duration' | 'fixed_output';
 
+export type SimulationTimeUnit = 'seconds' | 'minutes' | 'hours' | 'days';
+
+export type TransportSpeedTimeUnit = 'seconds' | 'minutes' | 'hours';
+
+export type SimulationCompletionStatus = 'normal' | 'target_reached_early' | 'deadline_not_met' | 'on_time';
+
 export interface DeviceBase {
   id: string;
   shape_type: ShapeType;
@@ -179,6 +185,7 @@ export interface Connection {
   continuous_transport: boolean;
   is_end_link: boolean;
   transport_speed_mps: number;
+  transport_speed_time_unit?: TransportSpeedTimeUnit;
   transport_mode: TransportMode;
   max_transport_count: number;
   unlimited_transport: boolean;
@@ -217,6 +224,7 @@ export interface Settings {
   snap_threshold_mm: number;
   utilization_sample_interval_s?: number;
   px_per_mm: number;
+  daily_work_hours?: number;
 }
 
 export type SimState = 'idle' | 'running' | 'paused' | 'completed';
@@ -288,6 +296,24 @@ export interface SimulationState {
   warehouse_selection_priorities?: WarehouseSelectionPriority[];
   product_selection_strategy?: ProductSelectionStrategy;
   consider_product_priority?: boolean;
+  deadline_s?: number | null;
+  completion_status?: SimulationCompletionStatus;
+  daily_work_hours?: number;
+}
+
+export interface LightweightSimState {
+  state: SimState;
+  elapsed_s: number;
+  speed: number;
+  duration_s: number;
+  completed_products: number;
+  completed_products_by_code: Record<string, number>;
+  max_total_wip: number;
+  simulation_mode: SimulationMode;
+  completion_status: SimulationCompletionStatus;
+  deadline_s: number | null;
+  daily_work_hours: number;
+  utilization_sample_interval_s: number;
 }
 
 export interface DeviceStatistics {
@@ -422,6 +448,9 @@ export interface SimulationResults {
   product_selection_strategy?: ProductSelectionStrategy;
   consider_product_priority?: boolean;
   wip_queue_records?: Record<string, WipQueueRecord[]>;
+  deadline_s?: number | null;
+  completion_status?: SimulationCompletionStatus;
+  daily_work_hours?: number;
 }
 
 export interface WipQueueRecord {

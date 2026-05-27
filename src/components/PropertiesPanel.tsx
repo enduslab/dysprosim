@@ -1,6 +1,82 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store';
-import type { Device, StartNode, EndNode, Station, AssemblyStation, DisassemblyStation, Warehouse, Buffer, TempStore, ProductProcessTime } from '../types';
+import type { Device, StartNode, EndNode, Station, AssemblyStation, DisassemblyStation, Warehouse, Buffer, TempStore, ProductProcessTime, TransportSpeedTimeUnit } from '../types';
+
+function secondsToHms(totalSeconds: number | null): { hours: number; minutes: number; seconds: number } {
+  if (totalSeconds == null || isNaN(totalSeconds)) return { hours: 0, minutes: 0, seconds: 0 };
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = Math.round((totalSeconds % 60) * 100) / 100;
+  return { hours: h, minutes: m, seconds: s };
+}
+
+function hmsToSeconds(hours: number, minutes: number, seconds: number): number {
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+function TimeInputHms({ value, onChange, style }: {
+  value: number | null;
+  onChange: (value: number | null) => void;
+  style?: React.CSSProperties;
+}) {
+  const hms = secondsToHms(value);
+  const [hours, setHours] = useState(String(hms.hours));
+  const [minutes, setMinutes] = useState(String(hms.minutes));
+  const [seconds, setSeconds] = useState(String(hms.seconds));
+
+  useEffect(() => {
+    const hms = secondsToHms(value);
+    setHours(String(hms.hours));
+    setMinutes(String(hms.minutes));
+    setSeconds(String(hms.seconds));
+  }, [value]);
+
+  const commit = () => {
+    const h = parseFloat(hours) || 0;
+    const m = parseFloat(minutes) || 0;
+    const s = parseFloat(seconds) || 0;
+    const total = hmsToSeconds(h, m, s);
+    onChange(total > 0 ? total : null);
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '2px', ...style }}>
+      <input
+        type="number"
+        className="property-input time-input-hms"
+        value={hours}
+        onChange={(e) => setHours(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === 'Enter' && commit()}
+        min="0"
+      />
+      <span style={{ fontSize: '11px' }}>时</span>
+      <input
+        type="number"
+        className="property-input time-input-hms"
+        value={minutes}
+        onChange={(e) => setMinutes(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === 'Enter' && commit()}
+        min="0"
+        max="59"
+      />
+      <span style={{ fontSize: '11px' }}>分</span>
+      <input
+        type="number"
+        className="property-input time-input-hms"
+        value={seconds}
+        onChange={(e) => setSeconds(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === 'Enter' && commit()}
+        min="0"
+        max="59"
+        step="0.1"
+      />
+      <span style={{ fontSize: '11px' }}>秒</span>
+    </div>
+  );
+}
 
 function ImeInput({ value, onChange, className, placeholder, style }: {
   value: string;
@@ -310,15 +386,52 @@ export default function PropertiesPanel() {
               </div>
               <div className="property-row">
                 <span className="property-label">运输速度</span>
-                <input
-                  type="number"
-                  className="property-input"
-                  value={connection.transport_speed_mps}
-                  onChange={(e) => handleConnectionChange('transport_speed_mps', parseFloat(e.target.value))}
-                  step="0.1"
-                  min="0.1"
-                />
-                <span style={{ marginLeft: '4px', fontSize: '12px' }}>m/s</span>
+                <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flex: 1 }}>
+                  <input
+                    type="number"
+                    className="property-input"
+                    value={(() => {
+                      const unit = connection.transport_speed_time_unit || 'seconds';
+                      const mps = connection.transport_speed_mps;
+                      if (unit === 'seconds') return mps;
+                      if (unit === 'minutes') return mps * 60;
+                      return mps * 3600;
+                    })()}
+                    onChange={(e) => {
+                      const unit = connection.transport_speed_time_unit || 'seconds';
+                      const val = parseFloat(e.target.value) || 0;
+                      let mps = val;
+                      if (unit === 'minutes') mps = val / 60;
+                      else if (unit === 'hours') mps = val / 3600;
+                      handleConnectionChange('transport_speed_mps', mps);
+                    }}
+                    step="0.1"
+                    min="0.1"
+                    style={{ flex: 1 }}
+                  />
+                  <span style={{ fontSize: '11px' }}>m/</span>
+                  <select
+                    value={connection.transport_speed_time_unit || 'seconds'}
+                    onChange={(e) => {
+                      const newUnit = e.target.value as TransportSpeedTimeUnit;
+                      const oldUnit = connection.transport_speed_time_unit || 'seconds';
+                      const mps = connection.transport_speed_mps;
+                      let displayVal = mps;
+                      if (oldUnit === 'minutes') displayVal = mps * 60;
+                      else if (oldUnit === 'hours') displayVal = mps * 3600;
+                      let newMps = displayVal;
+                      if (newUnit === 'minutes') newMps = displayVal / 60;
+                      else if (newUnit === 'hours') newMps = displayVal / 3600;
+                      const updated = { ...connection, transport_speed_time_unit: newUnit, transport_speed_mps: newMps };
+                      updateConnection(updated);
+                    }}
+                    style={{ minWidth: '50px' }}
+                  >
+                    <option value="seconds">秒</option>
+                    <option value="minutes">分</option>
+                    <option value="hours">时</option>
+                  </select>
+                </div>
               </div>
               {connection.transport_mode === 'continuous' && (
                 <>
@@ -1412,27 +1525,11 @@ function ProcessingSettingsTab({ device, onChange }: { device: Station; onChange
           <>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">平均时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.avg_time_s || ''}
-                onChange={(e) => updateField('avg_time_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.avg_time_s} onChange={(v) => updateField('avg_time_s', v)} />
             </div>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">标准差</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.stddev_s || ''}
-                onChange={(e) => updateField('stddev_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.stddev_s} onChange={(v) => updateField('stddev_s', v)} />
             </div>
           </>
         )}
@@ -1440,39 +1537,15 @@ function ProcessingSettingsTab({ device, onChange }: { device: Station; onChange
           <>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">最小时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.min_time_s || ''}
-                onChange={(e) => updateField('min_time_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.min_time_s} onChange={(v) => updateField('min_time_s', v)} />
             </div>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">众数时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.mode_time_s || ''}
-                onChange={(e) => updateField('mode_time_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.mode_time_s} onChange={(v) => updateField('mode_time_s', v)} />
             </div>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">最大时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.max_time_s || ''}
-                onChange={(e) => updateField('max_time_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.max_time_s} onChange={(v) => updateField('max_time_s', v)} />
             </div>
           </>
         )}
@@ -1480,42 +1553,18 @@ function ProcessingSettingsTab({ device, onChange }: { device: Station; onChange
           <>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">最小时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.uniform_min_s || ''}
-                onChange={(e) => updateField('uniform_min_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.uniform_min_s} onChange={(v) => updateField('uniform_min_s', v)} />
             </div>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">最大时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.uniform_max_s || ''}
-                onChange={(e) => updateField('uniform_max_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.uniform_max_s} onChange={(v) => updateField('uniform_max_s', v)} />
             </div>
           </>
         )}
         {config.dist_type === 'exponential' && (
           <div className="property-row" style={{ paddingLeft: '16px' }}>
             <span className="property-label">平均时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={config.exp_mean_s || ''}
-              onChange={(e) => updateField('exp_mean_s', parseFloat(e.target.value) || null)}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={config.exp_mean_s} onChange={(v) => updateField('exp_mean_s', v)} />
           </div>
         )}
       </>
@@ -1544,27 +1593,11 @@ function ProcessingSettingsTab({ device, onChange }: { device: Station; onChange
         <>
           <div className="property-row">
             <span className="property-label">平均时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.avg_time_s || ''}
-              onChange={(e) => onChange('avg_time_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.avg_time_s} onChange={(v) => onChange('avg_time_s', v || 0)} />
           </div>
           <div className="property-row">
             <span className="property-label">标准差</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.stddev_s || ''}
-              onChange={(e) => onChange('stddev_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.stddev_s} onChange={(v) => onChange('stddev_s', v || 0)} />
           </div>
         </>
       )}
@@ -1572,39 +1605,15 @@ function ProcessingSettingsTab({ device, onChange }: { device: Station; onChange
         <>
           <div className="property-row">
             <span className="property-label">最小时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.min_time_s || ''}
-              onChange={(e) => onChange('min_time_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.min_time_s} onChange={(v) => onChange('min_time_s', v || 0)} />
           </div>
           <div className="property-row">
             <span className="property-label">众数时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.mode_time_s || ''}
-              onChange={(e) => onChange('mode_time_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.mode_time_s} onChange={(v) => onChange('mode_time_s', v || 0)} />
           </div>
           <div className="property-row">
             <span className="property-label">最大时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.max_time_s || ''}
-              onChange={(e) => onChange('max_time_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.max_time_s} onChange={(v) => onChange('max_time_s', v || 0)} />
           </div>
         </>
       )}
@@ -1612,42 +1621,18 @@ function ProcessingSettingsTab({ device, onChange }: { device: Station; onChange
         <>
           <div className="property-row">
             <span className="property-label">最小时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.uniform_min_s || ''}
-              onChange={(e) => onChange('uniform_min_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.uniform_min_s} onChange={(v) => onChange('uniform_min_s', v || 0)} />
           </div>
           <div className="property-row">
             <span className="property-label">最大时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.uniform_max_s || ''}
-              onChange={(e) => onChange('uniform_max_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.uniform_max_s} onChange={(v) => onChange('uniform_max_s', v || 0)} />
           </div>
         </>
       )}
       {device.dist_type === 'exponential' && (
         <div className="property-row">
           <span className="property-label">平均时间</span>
-          <input
-            type="number"
-            className="property-input"
-            value={device.exp_mean_s || ''}
-            onChange={(e) => onChange('exp_mean_s', parseFloat(e.target.value))}
-            step="0.1"
-            min="0.1"
-          />
-          <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+          <TimeInputHms value={device.exp_mean_s} onChange={(v) => onChange('exp_mean_s', v || 0)} />
         </div>
       )}
 
@@ -2260,27 +2245,11 @@ function AssemblySettingsTab({ device, onChange }: { device: AssemblyStation; on
           <>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">平均时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.avg_time_s || ''}
-                onChange={(e) => updateField('avg_time_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.avg_time_s} onChange={(v) => updateField('avg_time_s', v)} />
             </div>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">标准差</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.stddev_s || ''}
-                onChange={(e) => updateField('stddev_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.stddev_s} onChange={(v) => updateField('stddev_s', v)} />
             </div>
           </>
         )}
@@ -2288,39 +2257,15 @@ function AssemblySettingsTab({ device, onChange }: { device: AssemblyStation; on
           <>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">最小时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.min_time_s || ''}
-                onChange={(e) => updateField('min_time_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.min_time_s} onChange={(v) => updateField('min_time_s', v)} />
             </div>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">众数时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.mode_time_s || ''}
-                onChange={(e) => updateField('mode_time_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.mode_time_s} onChange={(v) => updateField('mode_time_s', v)} />
             </div>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">最大时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.max_time_s || ''}
-                onChange={(e) => updateField('max_time_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.max_time_s} onChange={(v) => updateField('max_time_s', v)} />
             </div>
           </>
         )}
@@ -2328,42 +2273,18 @@ function AssemblySettingsTab({ device, onChange }: { device: AssemblyStation; on
           <>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">最小时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.uniform_min_s || ''}
-                onChange={(e) => updateField('uniform_min_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.uniform_min_s} onChange={(v) => updateField('uniform_min_s', v)} />
             </div>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">最大时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.uniform_max_s || ''}
-                onChange={(e) => updateField('uniform_max_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.uniform_max_s} onChange={(v) => updateField('uniform_max_s', v)} />
             </div>
           </>
         )}
         {config.dist_type === 'exponential' && (
           <div className="property-row" style={{ paddingLeft: '16px' }}>
             <span className="property-label">平均时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={config.exp_mean_s || ''}
-              onChange={(e) => updateField('exp_mean_s', parseFloat(e.target.value) || null)}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={config.exp_mean_s} onChange={(v) => updateField('exp_mean_s', v)} />
           </div>
         )}
       </>
@@ -2392,27 +2313,11 @@ function AssemblySettingsTab({ device, onChange }: { device: AssemblyStation; on
         <>
           <div className="property-row">
             <span className="property-label">平均时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.avg_time_s || ''}
-              onChange={(e) => onChange('avg_time_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.avg_time_s} onChange={(v) => onChange('avg_time_s', v || 0)} />
           </div>
           <div className="property-row">
             <span className="property-label">标准差</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.stddev_s || ''}
-              onChange={(e) => onChange('stddev_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.stddev_s} onChange={(v) => onChange('stddev_s', v || 0)} />
           </div>
         </>
       )}
@@ -2420,39 +2325,15 @@ function AssemblySettingsTab({ device, onChange }: { device: AssemblyStation; on
         <>
           <div className="property-row">
             <span className="property-label">最小时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.min_time_s || ''}
-              onChange={(e) => onChange('min_time_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.min_time_s} onChange={(v) => onChange('min_time_s', v || 0)} />
           </div>
           <div className="property-row">
             <span className="property-label">众数时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.mode_time_s || ''}
-              onChange={(e) => onChange('mode_time_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.mode_time_s} onChange={(v) => onChange('mode_time_s', v || 0)} />
           </div>
           <div className="property-row">
             <span className="property-label">最大时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.max_time_s || ''}
-              onChange={(e) => onChange('max_time_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.max_time_s} onChange={(v) => onChange('max_time_s', v || 0)} />
           </div>
         </>
       )}
@@ -2460,42 +2341,18 @@ function AssemblySettingsTab({ device, onChange }: { device: AssemblyStation; on
         <>
           <div className="property-row">
             <span className="property-label">最小时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.uniform_min_s || ''}
-              onChange={(e) => onChange('uniform_min_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.uniform_min_s} onChange={(v) => onChange('uniform_min_s', v || 0)} />
           </div>
           <div className="property-row">
             <span className="property-label">最大时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.uniform_max_s || ''}
-              onChange={(e) => onChange('uniform_max_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.uniform_max_s} onChange={(v) => onChange('uniform_max_s', v || 0)} />
           </div>
         </>
       )}
       {device.dist_type === 'exponential' && (
         <div className="property-row">
           <span className="property-label">平均时间</span>
-          <input
-            type="number"
-            className="property-input"
-            value={device.exp_mean_s || ''}
-            onChange={(e) => onChange('exp_mean_s', parseFloat(e.target.value))}
-            step="0.1"
-            min="0.1"
-          />
-          <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+          <TimeInputHms value={device.exp_mean_s} onChange={(v) => onChange('exp_mean_s', v || 0)} />
         </div>
       )}
 
@@ -2850,27 +2707,11 @@ function DisassemblySettingsTab({ device, onChange }: { device: DisassemblyStati
           <>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">平均时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.avg_time_s || ''}
-                onChange={(e) => updateField('avg_time_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.avg_time_s} onChange={(v) => updateField('avg_time_s', v)} />
             </div>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">标准差</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.stddev_s || ''}
-                onChange={(e) => updateField('stddev_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.stddev_s} onChange={(v) => updateField('stddev_s', v)} />
             </div>
           </>
         )}
@@ -2878,39 +2719,15 @@ function DisassemblySettingsTab({ device, onChange }: { device: DisassemblyStati
           <>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">最小时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.min_time_s || ''}
-                onChange={(e) => updateField('min_time_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.min_time_s} onChange={(v) => updateField('min_time_s', v)} />
             </div>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">众数时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.mode_time_s || ''}
-                onChange={(e) => updateField('mode_time_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.mode_time_s} onChange={(v) => updateField('mode_time_s', v)} />
             </div>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">最大时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.max_time_s || ''}
-                onChange={(e) => updateField('max_time_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.max_time_s} onChange={(v) => updateField('max_time_s', v)} />
             </div>
           </>
         )}
@@ -2918,42 +2735,18 @@ function DisassemblySettingsTab({ device, onChange }: { device: DisassemblyStati
           <>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">最小时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.uniform_min_s || ''}
-                onChange={(e) => updateField('uniform_min_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.uniform_min_s} onChange={(v) => updateField('uniform_min_s', v)} />
             </div>
             <div className="property-row" style={{ paddingLeft: '16px' }}>
               <span className="property-label">最大时间</span>
-              <input
-                type="number"
-                className="property-input"
-                value={config.uniform_max_s || ''}
-                onChange={(e) => updateField('uniform_max_s', parseFloat(e.target.value) || null)}
-                step="0.1"
-                min="0.1"
-              />
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+              <TimeInputHms value={config.uniform_max_s} onChange={(v) => updateField('uniform_max_s', v)} />
             </div>
           </>
         )}
         {config.dist_type === 'exponential' && (
           <div className="property-row" style={{ paddingLeft: '16px' }}>
             <span className="property-label">平均时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={config.exp_mean_s || ''}
-              onChange={(e) => updateField('exp_mean_s', parseFloat(e.target.value) || null)}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={config.exp_mean_s} onChange={(v) => updateField('exp_mean_s', v)} />
           </div>
         )}
       </>
@@ -2982,27 +2775,11 @@ function DisassemblySettingsTab({ device, onChange }: { device: DisassemblyStati
         <>
           <div className="property-row">
             <span className="property-label">平均时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.avg_time_s || ''}
-              onChange={(e) => onChange('avg_time_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.avg_time_s} onChange={(v) => onChange('avg_time_s', v || 0)} />
           </div>
           <div className="property-row">
             <span className="property-label">标准差</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.stddev_s || ''}
-              onChange={(e) => onChange('stddev_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.stddev_s} onChange={(v) => onChange('stddev_s', v || 0)} />
           </div>
         </>
       )}
@@ -3010,39 +2787,15 @@ function DisassemblySettingsTab({ device, onChange }: { device: DisassemblyStati
         <>
           <div className="property-row">
             <span className="property-label">最小时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.min_time_s || ''}
-              onChange={(e) => onChange('min_time_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.min_time_s} onChange={(v) => onChange('min_time_s', v || 0)} />
           </div>
           <div className="property-row">
             <span className="property-label">众数时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.mode_time_s || ''}
-              onChange={(e) => onChange('mode_time_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.mode_time_s} onChange={(v) => onChange('mode_time_s', v || 0)} />
           </div>
           <div className="property-row">
             <span className="property-label">最大时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.max_time_s || ''}
-              onChange={(e) => onChange('max_time_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.max_time_s} onChange={(v) => onChange('max_time_s', v || 0)} />
           </div>
         </>
       )}
@@ -3050,42 +2803,18 @@ function DisassemblySettingsTab({ device, onChange }: { device: DisassemblyStati
         <>
           <div className="property-row">
             <span className="property-label">最小时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.uniform_min_s || ''}
-              onChange={(e) => onChange('uniform_min_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.uniform_min_s} onChange={(v) => onChange('uniform_min_s', v || 0)} />
           </div>
           <div className="property-row">
             <span className="property-label">最大时间</span>
-            <input
-              type="number"
-              className="property-input"
-              value={device.uniform_max_s || ''}
-              onChange={(e) => onChange('uniform_max_s', parseFloat(e.target.value))}
-              step="0.1"
-              min="0.1"
-            />
-            <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+            <TimeInputHms value={device.uniform_max_s} onChange={(v) => onChange('uniform_max_s', v || 0)} />
           </div>
         </>
       )}
       {device.dist_type === 'exponential' && (
         <div className="property-row">
           <span className="property-label">平均时间</span>
-          <input
-            type="number"
-            className="property-input"
-            value={device.exp_mean_s || ''}
-            onChange={(e) => onChange('exp_mean_s', parseFloat(e.target.value))}
-            step="0.1"
-            min="0.1"
-          />
-          <span style={{ marginLeft: '4px', fontSize: '12px' }}>秒</span>
+          <TimeInputHms value={device.exp_mean_s} onChange={(v) => onChange('exp_mean_s', v || 0)} />
         </div>
       )}
 

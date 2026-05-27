@@ -89,6 +89,35 @@ pub enum SimulationMode {
     FixedOutput,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SimulationTimeUnit {
+    Seconds,
+    Minutes,
+    Hours,
+    #[default]
+    Days,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TransportSpeedTimeUnit {
+    #[default]
+    Seconds,
+    Minutes,
+    Hours,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SimulationCompletionStatus {
+    #[default]
+    Normal,
+    TargetReachedEarly,
+    DeadlineNotMet,
+    OnTime,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum LineStyle {
@@ -789,6 +818,8 @@ pub struct Connection {
     pub continuous_transport: bool,
     pub is_end_link: bool,
     pub transport_speed_mps: f64,
+    #[serde(default)]
+    pub transport_speed_time_unit: TransportSpeedTimeUnit,
     pub transport_mode: TransportMode,
     pub max_transport_count: i32,
     pub unlimited_transport: bool,
@@ -816,6 +847,7 @@ impl Connection {
             continuous_transport: true,
             is_end_link: false,
             transport_speed_mps: 1.0,
+            transport_speed_time_unit: TransportSpeedTimeUnit::Seconds,
             transport_mode: TransportMode::Continuous,
             max_transport_count: 1,
             unlimited_transport: true,
@@ -870,7 +902,11 @@ pub struct Settings {
     pub show_grid: bool,
     pub show_rulers: bool,
     pub snap_threshold_mm: f64,
+    #[serde(default = "default_daily_work_hours")]
+    pub daily_work_hours: f64,
 }
+
+fn default_daily_work_hours() -> f64 { 8.0 }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -879,6 +915,7 @@ impl Default for Settings {
             show_grid: true,
             show_rulers: true,
             snap_threshold_mm: 20.0,
+            daily_work_hours: 8.0,
         }
     }
 }

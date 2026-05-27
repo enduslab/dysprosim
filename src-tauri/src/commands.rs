@@ -290,6 +290,7 @@ pub fn apply_optimization_changes(
                                 continuous_transport,
                                 is_end_link: false,
                                 transport_speed_mps: transport_speed,
+                                transport_speed_time_unit: TransportSpeedTimeUnit::Seconds,
                                 transport_mode: transport_mode.clone(),
                                 max_transport_count,
                                 unlimited_transport,
@@ -317,6 +318,7 @@ pub fn apply_optimization_changes(
                                 continuous_transport,
                                 is_end_link: false,
                                 transport_speed_mps: transport_speed,
+                                transport_speed_time_unit: TransportSpeedTimeUnit::Seconds,
                                 transport_mode,
                                 max_transport_count,
                                 unlimited_transport,
@@ -414,6 +416,7 @@ pub fn apply_optimization_changes(
                                     continuous_transport: up_conn.continuous_transport,
                                     is_end_link: false,
                                     transport_speed_mps: up_conn.transport_speed_mps,
+                                    transport_speed_time_unit: up_conn.transport_speed_time_unit,
                                     transport_mode: up_conn.transport_mode.clone(),
                                     max_transport_count: up_conn.max_transport_count,
                                     unlimited_transport: up_conn.unlimited_transport,
@@ -443,6 +446,7 @@ pub fn apply_optimization_changes(
                                     continuous_transport: down_conn.continuous_transport,
                                     is_end_link: false,
                                     transport_speed_mps: down_conn.transport_speed_mps,
+                                    transport_speed_time_unit: down_conn.transport_speed_time_unit,
                                     transport_mode: down_conn.transport_mode.clone(),
                                     max_transport_count: down_conn.max_transport_count,
                                     unlimited_transport: down_conn.unlimited_transport,
@@ -930,7 +934,13 @@ pub fn reset_simulation(state: State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 pub fn step_simulation(state: State<'_, AppState>, dt_s: f64) -> Result<bool, String> {
     let mut simulation = state.simulation.lock().map_err(|e| e.to_string())?;
-    Ok(simulation.step(dt_s))
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        simulation.step(dt_s)
+    }));
+    match result {
+        Ok(completed) => Ok(completed),
+        Err(_) => Err("Simulation step panicked - dt_s may be too large".to_string()),
+    }
 }
 
 #[tauri::command]
@@ -965,11 +975,16 @@ pub fn run_simulation_to_completion(state: State<'_, AppState>) -> Result<crate:
     simulation.set_consider_product_priority(saved_consider_priority);
     simulation.start();
 
-    let step_size = 1.0;
+    let step_size = 60.0;
     let max_steps = 1_000_000;
     for _ in 0..max_steps {
-        if simulation.step(step_size) {
-            break;
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            simulation.step(step_size)
+        }));
+        match result {
+            Ok(true) => break,
+            Ok(false) => {},
+            Err(_) => return Err("Simulation panicked during run to completion".to_string()),
         }
     }
 
@@ -1033,9 +1048,29 @@ pub fn set_consider_product_priority(state: State<'_, AppState>, consider: bool)
 }
 
 #[tauri::command]
+pub fn set_deadline(state: State<'_, AppState>, deadline_s: Option<f64>) -> Result<(), String> {
+    let mut simulation = state.simulation.lock().map_err(|e| e.to_string())?;
+    simulation.set_deadline(deadline_s);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_daily_work_hours(state: State<'_, AppState>, hours: f64) -> Result<(), String> {
+    let mut simulation = state.simulation.lock().map_err(|e| e.to_string())?;
+    simulation.set_daily_work_hours(hours);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_simulation_state(state: State<'_, AppState>) -> Result<crate::simulation::SimulationState, String> {
     let simulation = state.simulation.lock().map_err(|e| e.to_string())?;
     Ok(simulation.state().clone())
+}
+
+#[tauri::command]
+pub fn get_lightweight_sim_state(state: State<'_, AppState>) -> Result<crate::simulation::LightweightSimState, String> {
+    let simulation = state.simulation.lock().map_err(|e| e.to_string())?;
+    Ok(simulation.lightweight_state())
 }
 
 #[tauri::command]

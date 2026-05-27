@@ -18,7 +18,7 @@ export default function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
           DysProSim
         </h2>
         <p style={{ margin: '0 0 4px 0', fontSize: '14px', color: '#64748B' }}>
-          v1.3.0
+          v1.4.0
         </p>
         <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: '#475569' }}>
           离散生产与物流系统模拟工具

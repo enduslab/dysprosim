@@ -12,6 +12,7 @@ import type {
   CanvasState,
   LayoutData,
   SimulationState,
+  LightweightSimState,
   SimulationResults,
   ResourceSelectionRule,
   SimulationRecord,
@@ -118,6 +119,7 @@ interface AppState {
   resumeSimulation: () => Promise<void>;
   resetSimulation: () => Promise<void>;
   stepSimulation: (dt_s: number) => Promise<boolean>;
+  refreshLightweightState: () => Promise<void>;
   setSimulationSpeed: (speed: number) => Promise<void>;
   setSimulationDuration: (duration_s: number) => Promise<void>;
   setResourceSelectionRule: (rule: ResourceSelectionRule) => Promise<void>;
@@ -126,6 +128,8 @@ interface AppState {
   setWarehouseSelectionPriorities: (priorities: WarehouseSelectionPriority[]) => Promise<void>;
   setProductSelectionStrategy: (strategy: ProductSelectionStrategy) => Promise<void>;
   setConsiderProductPriority: (consider: boolean) => Promise<void>;
+  setDeadline: (deadline_s: number | null) => Promise<void>;
+  setDailyWorkHours: (hours: number) => Promise<void>;
   loadSimulationState: () => Promise<void>;
   loadSimulationResults: () => Promise<void>;
   saveSimulationRecord: () => Promise<string>;
@@ -1292,12 +1296,33 @@ export const useAppStore = create<AppState>((set, get) => ({
   stepSimulation: async (dt_s: number) => {
     try {
       const completed = await invoke<boolean>('step_simulation', { dtS: dt_s });
-      const simState = await invoke<SimulationState>('get_simulation_state');
-      set({ simulation: simState });
       return completed;
     } catch (error) {
       set({ error: String(error) });
       return false;
+    }
+  },
+
+  refreshLightweightState: async () => {
+    try {
+      const lwState = await invoke<LightweightSimState>('get_lightweight_sim_state');
+      set((state) => ({
+        simulation: {
+          ...state.simulation,
+          state: lwState.state,
+          elapsed_s: lwState.elapsed_s,
+          speed: lwState.speed,
+          duration_s: lwState.duration_s,
+          completed_products: lwState.completed_products,
+          simulation_mode: lwState.simulation_mode,
+          completion_status: lwState.completion_status,
+          deadline_s: lwState.deadline_s,
+          daily_work_hours: lwState.daily_work_hours,
+          utilization_sample_interval_s: lwState.utilization_sample_interval_s,
+        }
+      }));
+    } catch (error) {
+      // silently ignore - will retry next frame
     }
   },
 
@@ -1374,6 +1399,26 @@ export const useAppStore = create<AppState>((set, get) => ({
   setConsiderProductPriority: async (consider: boolean) => {
     try {
       await invoke('set_consider_product_priority', { consider });
+      const simState = await invoke<SimulationState>('get_simulation_state');
+      set({ simulation: simState });
+    } catch (error) {
+      set({ error: String(error) });
+    }
+  },
+
+  setDeadline: async (deadline_s: number | null) => {
+    try {
+      await invoke('set_deadline', { deadlineS: deadline_s });
+      const simState = await invoke<SimulationState>('get_simulation_state');
+      set({ simulation: simState });
+    } catch (error) {
+      set({ error: String(error) });
+    }
+  },
+
+  setDailyWorkHours: async (hours: number) => {
+    try {
+      await invoke('set_daily_work_hours', { hours });
       const simState = await invoke<SimulationState>('get_simulation_state');
       set({ simulation: simState });
     } catch (error) {

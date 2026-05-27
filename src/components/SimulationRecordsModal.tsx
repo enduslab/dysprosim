@@ -3008,6 +3008,20 @@ export default function SimulationRecordsModal({ onClose, deviceId, connectionId
                             {selectedRecord.results.simulation_mode === 'fixed_output' ? '固定产量' : '固定时长'}
                           </span>
                         </div>
+                        {selectedRecord.results.completion_status && selectedRecord.results.completion_status !== 'normal' && (
+                          <div className="stat-item">
+                            <span className="stat-label">完成状态</span>
+                            <span className="stat-value" style={{
+                              color: selectedRecord.results.completion_status === 'target_reached_early' ? '#22c55e' :
+                                     selectedRecord.results.completion_status === 'deadline_not_met' ? '#ef4444' :
+                                     selectedRecord.results.completion_status === 'on_time' ? '#3b82f6' : undefined
+                            }}>
+                              {selectedRecord.results.completion_status === 'target_reached_early' ? '提前完成目标产量' :
+                               selectedRecord.results.completion_status === 'deadline_not_met' ? '到期未完成' :
+                               selectedRecord.results.completion_status === 'on_time' ? '准时完成' : ''}
+                            </span>
+                          </div>
+                        )}
                         <div className="stat-item">
                           <span className="stat-label">资源选择规则</span>
                           <span className="stat-value">

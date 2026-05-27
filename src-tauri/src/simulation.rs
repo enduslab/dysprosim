@@ -1,6 +1,6 @@
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -154,9 +154,16 @@ pub struct SimulationState {
     pub product_selection_strategy: crate::models::ProductSelectionStrategy,
     #[serde(default)]
     pub consider_product_priority: bool,
+    #[serde(default)]
+    pub deadline_s: Option<f64>,
+    #[serde(default)]
+    pub completion_status: crate::models::SimulationCompletionStatus,
+    #[serde(default = "default_daily_work_hours")]
+    pub daily_work_hours: f64,
 }
 
 fn default_utilization_sample_interval() -> f64 { 1.0 }
+fn default_daily_work_hours() -> f64 { 8.0 }
 
 fn default_warehouse_selection_priorities() -> Vec<crate::models::WarehouseSelectionPriority> {
     vec![
@@ -202,8 +209,27 @@ impl Default for SimulationState {
             warehouse_selection_priorities: default_warehouse_selection_priorities(),
             product_selection_strategy: crate::models::ProductSelectionStrategy::default(),
             consider_product_priority: false,
+            deadline_s: None,
+            completion_status: crate::models::SimulationCompletionStatus::Normal,
+            daily_work_hours: 8.0,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LightweightSimState {
+    pub state: SimState,
+    pub elapsed_s: f64,
+    pub speed: f64,
+    pub duration_s: f64,
+    pub completed_products: i32,
+    pub completed_products_by_code: HashMap<String, i32>,
+    pub max_total_wip: i32,
+    pub simulation_mode: crate::models::SimulationMode,
+    pub completion_status: crate::models::SimulationCompletionStatus,
+    pub deadline_s: Option<f64>,
+    pub daily_work_hours: f64,
+    pub utilization_sample_interval_s: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -354,6 +380,12 @@ pub struct SimulationResults {
     pub product_selection_strategy: Option<crate::models::ProductSelectionStrategy>,
     #[serde(default)]
     pub consider_product_priority: Option<bool>,
+    #[serde(default)]
+    pub deadline_s: Option<f64>,
+    #[serde(default)]
+    pub completion_status: crate::models::SimulationCompletionStatus,
+    #[serde(default = "default_daily_work_hours")]
+    pub daily_work_hours: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -367,7 +399,7 @@ pub struct WipQueueRecord {
 pub struct SimulationEngine {
     state: SimulationState,
     canvas_state: crate::models::CanvasState,
-    event_queue: Vec<SimEvent>,
+    event_queue: VecDeque<SimEvent>,
     rng: rand::rngs::StdRng,
 }
 
@@ -401,7 +433,7 @@ impl SimulationEngine {
         Self {
             state: SimulationState::default(),
             canvas_state,
-            event_queue: Vec::new(),
+            event_queue: VecDeque::new(),
             rng: rand::rngs::StdRng::from_entropy(),
         }
     }
@@ -435,9 +467,30 @@ impl SimulationEngine {
         &self.state
     }
 
+    pub fn lightweight_state(&self) -> LightweightSimState {
+        LightweightSimState {
+            state: self.state.state.clone(),
+            elapsed_s: self.state.elapsed_s,
+            speed: self.state.speed,
+            duration_s: self.state.duration_s,
+            completed_products: self.state.completed_products,
+            completed_products_by_code: self.state.completed_products_by_code.clone(),
+            max_total_wip: self.state.max_total_wip,
+            simulation_mode: self.state.simulation_mode.clone(),
+            completion_status: self.state.completion_status.clone(),
+            deadline_s: self.state.deadline_s,
+            daily_work_hours: self.state.daily_work_hours,
+            utilization_sample_interval_s: self.state.utilization_sample_interval_s,
+        }
+    }
+
     fn push_event(&mut self, event: SimEvent) {
-        self.event_queue.push(event);
-        self.event_queue.sort_by(|a, b| a.time_s().partial_cmp(&b.time_s()).unwrap_or(std::cmp::Ordering::Equal));
+        let event_time = event.time_s();
+        let pos = self.event_queue.as_slices().0.iter()
+            .chain(self.event_queue.as_slices().1.iter())
+            .position(|e| e.time_s() >= event_time)
+            .unwrap_or(self.event_queue.len());
+        self.event_queue.insert(pos, event);
     }
 
     pub fn set_speed(&mut self, speed: f64) {
@@ -474,6 +527,14 @@ impl SimulationEngine {
         self.state.consider_product_priority = consider;
     }
 
+    pub fn set_deadline(&mut self, deadline_s: Option<f64>) {
+        self.state.deadline_s = deadline_s;
+    }
+
+    pub fn set_daily_work_hours(&mut self, hours: f64) {
+        self.state.daily_work_hours = hours.max(1.0).min(24.0);
+    }
+
     fn update_total_wip(&mut self) {
         let mut total_wip: i32 = 0;
         
@@ -487,6 +548,73 @@ impl SimulationEngine {
         
         if total_wip > self.state.max_total_wip {
             self.state.max_total_wip = total_wip;
+        }
+    }
+
+    fn cleanup_completed_products(&mut self) {
+        let completed_ids: Vec<String> = self.state.process_products.iter()
+            .filter(|(_, pp)| pp.status == crate::models::ProcessProductStatus::Completed)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in completed_ids {
+            self.state.process_products.remove(&id);
+        }
+    }
+
+    fn trim_history_arrays(&mut self) {
+        let max_history = 10000usize;
+        for sim_dev in self.state.devices.values_mut() {
+            if sim_dev.utilization_history.len() > max_history {
+                let drain_count = sim_dev.utilization_history.len() - max_history;
+                sim_dev.utilization_history.drain(0..drain_count);
+            }
+        }
+        for sim_conn in self.state.connections.values_mut() {
+            if sim_conn.utilization_history.len() > max_history {
+                let drain_count = sim_conn.utilization_history.len() - max_history;
+                sim_conn.utilization_history.drain(0..drain_count);
+            }
+        }
+        for sim_storage in self.state.storage.values_mut() {
+            if sim_storage.stock_history.len() > max_history {
+                let drain_count = sim_storage.stock_history.len() - max_history;
+                sim_storage.stock_history.drain(0..drain_count);
+            }
+            if sim_storage.utilization_history.len() > max_history {
+                let drain_count = sim_storage.utilization_history.len() - max_history;
+                sim_storage.utilization_history.drain(0..drain_count);
+            }
+        }
+        let max_records = 50000usize;
+        for records in self.state.processing_records.values_mut() {
+            if records.len() > max_records {
+                let drain_count = records.len() - max_records;
+                records.drain(0..drain_count);
+            }
+        }
+        for records in self.state.transport_records.values_mut() {
+            if records.len() > max_records {
+                let drain_count = records.len() - max_records;
+                records.drain(0..drain_count);
+            }
+        }
+        for records in self.state.storage_change_records.values_mut() {
+            if records.len() > max_records {
+                let drain_count = records.len() - max_records;
+                records.drain(0..drain_count);
+            }
+        }
+        for records in self.state.feed_records.values_mut() {
+            if records.len() > max_records {
+                let drain_count = records.len() - max_records;
+                records.drain(0..drain_count);
+            }
+        }
+        for records in self.state.end_node_arrival_records.values_mut() {
+            if records.len() > max_records {
+                let drain_count = records.len() - max_records;
+                records.drain(0..drain_count);
+            }
         }
     }
 
@@ -577,59 +705,102 @@ impl SimulationEngine {
             return false;
         }
 
+        let dt_s = dt_s.min(3600.0).max(0.001);
+        let max_events_per_step = 50000usize;
+        let mut events_processed = 0usize;
+
         let start_time = self.state.elapsed_s;
         let end_time = start_time + dt_s;
         let sample_interval = self.state.utilization_sample_interval_s.max(0.1);
+        let max_samples = 1000i32;
+        let effective_sample_interval = if dt_s / sample_interval > max_samples as f64 {
+            dt_s / max_samples as f64
+        } else {
+            sample_interval
+        };
         
         let mut next_sample_time = if start_time == 0.0 {
-            sample_interval
+            effective_sample_interval
         } else {
-            (start_time / sample_interval).ceil() * sample_interval
+            (start_time / effective_sample_interval).ceil() * effective_sample_interval
         };
         
         if next_sample_time <= start_time {
-            next_sample_time = start_time + sample_interval;
+            next_sample_time = start_time + effective_sample_interval;
         }
         
         while next_sample_time <= end_time {
-            while let Some(event) = self.event_queue.first() {
+            while let Some(event) = self.event_queue.front() {
                 let event_time = event.time_s();
                 if event_time > next_sample_time {
                     break;
                 }
-                let event = self.event_queue.remove(0);
+                if events_processed >= max_events_per_step {
+                    break;
+                }
+                let event = self.event_queue.pop_front().unwrap();
                 self.state.elapsed_s = event_time;
                 self.process_event(event);
+                events_processed += 1;
+            }
+            
+            if events_processed >= max_events_per_step {
+                break;
             }
             
             self.state.elapsed_s = next_sample_time;
             self.record_utilization_snapshot(next_sample_time);
             
-            next_sample_time += sample_interval;
+            next_sample_time += effective_sample_interval;
         }
         
-        while let Some(event) = self.event_queue.first() {
+        while let Some(event) = self.event_queue.front() {
             let event_time = event.time_s();
             if event_time > end_time {
                 break;
             }
-            let event = self.event_queue.remove(0);
+            if events_processed >= max_events_per_step {
+                break;
+            }
+            let event = self.event_queue.pop_front().unwrap();
             self.state.elapsed_s = event_time;
             self.process_event(event);
+            events_processed += 1;
         }
 
         self.state.elapsed_s = end_time;
 
+        if (end_time / 3600.0).floor() > (start_time / 3600.0).floor() {
+            self.cleanup_completed_products();
+            self.trim_history_arrays();
+        }
+
         match self.state.simulation_mode {
             crate::models::SimulationMode::FixedDuration => {
                 if self.state.elapsed_s >= self.state.duration_s {
+                    self.state.completion_status = crate::models::SimulationCompletionStatus::Normal;
                     self.state.state = SimState::Completed;
                     return true;
                 }
             }
             crate::models::SimulationMode::FixedOutput => {
                 let all_targets_reached = self.check_all_targets_reached();
+                let deadline_reached = self.state.deadline_s.map_or(false, |d| self.state.elapsed_s >= d);
+                
+                if all_targets_reached && deadline_reached {
+                    self.state.completion_status = crate::models::SimulationCompletionStatus::OnTime;
+                    self.state.state = SimState::Completed;
+                    return true;
+                }
+                
                 if all_targets_reached {
+                    self.state.completion_status = crate::models::SimulationCompletionStatus::TargetReachedEarly;
+                    self.state.state = SimState::Completed;
+                    return true;
+                }
+                
+                if deadline_reached {
+                    self.state.completion_status = crate::models::SimulationCompletionStatus::DeadlineNotMet;
                     self.state.state = SimState::Completed;
                     return true;
                 }
@@ -751,6 +922,7 @@ impl SimulationEngine {
                 crate::models::Device::AssemblyStation(a) => {
                     let is_component = a.components.contains(&product_code.to_string());
                     let is_legacy = !a.processable_products.is_empty() && a.processable_products.contains(&product_code.to_string());
+                    let is_assembly_output = a.assembly_products.contains(&product_code.to_string());
                     if is_component || is_legacy {
                         for (assembly_product_code, component_reqs) in &a.product_upstream_requirements {
                             if let Some(qty) = component_reqs.get(product_code) {
@@ -760,10 +932,22 @@ impl SimulationEngine {
                             }
                         }
                     }
+                    if is_assembly_output {
+                        self.trace_upstream_for_assembly_components(&a.base.id, product_code, start_nodes, visited);
+                    }
                 }
                 crate::models::Device::DisassemblyStation(d) => {
                     if d.items_to_disassemble.contains(&product_code.to_string()) {
                         self.trace_upstream_for_product(&conn.from_device_id, product_code, start_nodes, visited);
+                    }
+                    if d.disassembly_products.contains(&product_code.to_string()) {
+                        for (item_code, outputs) in &d.product_disassembly_requirements {
+                            if let Some(qty) = outputs.get(product_code) {
+                                if *qty > 0 {
+                                    self.trace_upstream_for_product(&conn.from_device_id, item_code, start_nodes, visited);
+                                }
+                            }
+                        }
                     }
                 }
                 crate::models::Device::Warehouse(_)
@@ -5640,6 +5824,9 @@ impl SimulationEngine {
             wip_queue_records: self.collect_wip_queue_records(),
             product_selection_strategy: Some(self.state.product_selection_strategy),
             consider_product_priority: Some(self.state.consider_product_priority),
+            deadline_s: self.state.deadline_s,
+            completion_status: self.state.completion_status.clone(),
+            daily_work_hours: self.state.daily_work_hours,
         }
     }
     

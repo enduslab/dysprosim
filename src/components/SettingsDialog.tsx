@@ -132,6 +132,29 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
         </div>
 
         <div className="property-group">
+          <div className="property-group-title">模拟设置</div>
+          
+          <div className="property-row">
+            <label className="property-label">每日工作时长</label>
+            <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+              <input
+                type="number"
+                className="property-input"
+                value={settings.daily_work_hours || 8}
+                onChange={(e) => handleChange('daily_work_hours', parseFloat(e.target.value) || 8)}
+                min={1}
+                max={24}
+                step={0.5}
+              />
+              <span style={{ marginLeft: '4px', fontSize: '12px' }}>小时</span>
+            </div>
+          </div>
+          <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '4px' }}>
+            模拟周期选择"天"时起效，1天 = 设置的工作时长小时数。默认值：8
+          </div>
+        </div>
+
+        <div className="property-group">
           <div className="property-group-title">AI 分析设置</div>
           
           <div className="property-row">

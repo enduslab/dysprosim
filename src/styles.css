@@ -469,6 +469,19 @@ body {
   box-shadow: 0 0 0 3px var(--accent-light);
 }
 
+.time-input-hms {
+  width: 52px;
+  padding: 4px 6px;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.time-input-hms::-webkit-inner-spin-button,
+.time-input-hms::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 .property-select {
   width: 100%;
   padding: 8px 12px;

@@ -1,11 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../store';
-import type { ResourceSelectionRule, Device, SimulationMode, EndNode, WarehouseSelectionPriority, ProductSelectionStrategy } from '../types';
+import type { ResourceSelectionRule, Device, SimulationMode, SimulationTimeUnit, EndNode, WarehouseSelectionPriority, ProductSelectionStrategy } from '../types';
 import { calculateConnectionLengthMm, calculateElbowIntermediatePoints, getDeviceAnchorPx } from '../utils/connectionUtils';
 import ProductRoutesModal from './ProductRoutesModal';
 import ValidationErrorModal from './ValidationErrorModal';
 import AiAnalysisModal from './AiAnalysisModal';
 import AiOptimizationModal from './AiOptimizationModal';
+
+function timeUnitToSeconds(unit: SimulationTimeUnit, dailyWorkHours: number): number {
+  switch (unit) {
+    case 'seconds': return 1;
+    case 'minutes': return 60;
+    case 'hours': return 3600;
+    case 'days': return dailyWorkHours * 3600;
+  }
+}
+
+function secondsToUnitValue(totalSeconds: number, unit: SimulationTimeUnit, dailyWorkHours: number): number {
+  const factor = timeUnitToSeconds(unit, dailyWorkHours);
+  return factor > 0 ? totalSeconds / factor : totalSeconds;
+}
+
+function unitValueToSeconds(value: number, unit: SimulationTimeUnit, dailyWorkHours: number): number {
+  return value * timeUnitToSeconds(unit, dailyWorkHours);
+}
 
 export default function SimControlPanel() {
   const simulation = useAppStore((state) => state.simulation);
@@ -16,6 +34,7 @@ export default function SimControlPanel() {
   const resumeSimulation = useAppStore((state) => state.resumeSimulation);
   const resetSimulation = useAppStore((state) => state.resetSimulation);
   const stepSimulation = useAppStore((state) => state.stepSimulation);
+  const refreshLightweightState = useAppStore((state) => state.refreshLightweightState);
   const setSimulationSpeed = useAppStore((state) => state.setSimulationSpeed);
   const setSimulationDuration = useAppStore((state) => state.setSimulationDuration);
   const setResourceSelectionRule = useAppStore((state) => state.setResourceSelectionRule);
@@ -24,6 +43,7 @@ export default function SimControlPanel() {
   const setWarehouseSelectionPriorities = useAppStore((state) => state.setWarehouseSelectionPriorities);
   const setProductSelectionStrategy = useAppStore((state) => state.setProductSelectionStrategy);
   const setConsiderProductPriority = useAppStore((state) => state.setConsiderProductPriority);
+  const setDeadline = useAppStore((state) => state.setDeadline);
   const loadSimulationState = useAppStore((state) => state.loadSimulationState);
   const saveSimulationRecord = useAppStore((state) => state.saveSimulationRecord);
   const openRecordsModal = useAppStore((state) => state.openRecordsModal);
@@ -44,12 +64,19 @@ export default function SimControlPanel() {
   const lastTimeRef = useRef<number>(0);
   const speedRef = useRef<number>(simulation.speed);
   const stepSimulationRef = useRef(stepSimulation);
+  const refreshLightweightStateRef = useRef(refreshLightweightState);
+  const loadSimulationStateRef = useRef(loadSimulationState);
   const isSteppingRef = useRef<boolean>(false);
   const accumulatedTimeRef = useRef<number>(0);
+  const fullStateTimerRef = useRef<number | null>(null);
 
   const [durationInput, setDurationInput] = useState(String(simulation.duration_s));
   const [speedInput, setSpeedInput] = useState(String(simulation.speed));
   const [sampleIntervalInput, setSampleIntervalInput] = useState(String(simulation.utilization_sample_interval_s || 1));
+  const [durationTimeUnit, setDurationTimeUnit] = useState<SimulationTimeUnit>('seconds');
+  const [durationValue, setDurationValue] = useState(String(simulation.duration_s));
+  const [deadlineTimeUnit, setDeadlineTimeUnit] = useState<SimulationTimeUnit>('seconds');
+  const [deadlineValue, setDeadlineValue] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showRuleHelp, setShowRuleHelp] = useState(false);
   const [showAiAnalysis, setShowAiAnalysis] = useState(false);
@@ -60,16 +87,24 @@ export default function SimControlPanel() {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const panelRef = useRef<HTMLDivElement>(null);
 
+  const effectiveSpeedRef = useRef<number>(simulation.speed);
+
   useEffect(() => {
     speedRef.current = simulation.speed;
     stepSimulationRef.current = stepSimulation;
-  }, [simulation.speed, stepSimulation]);
+    refreshLightweightStateRef.current = refreshLightweightState;
+    loadSimulationStateRef.current = loadSimulationState;
+    const dailyWorkHours = simulation.daily_work_hours || canvas.settings.daily_work_hours || 8;
+    effectiveSpeedRef.current = simulation.speed * timeUnitToSeconds(durationTimeUnit, dailyWorkHours);
+  }, [simulation.speed, stepSimulation, refreshLightweightState, loadSimulationState, durationTimeUnit, canvas.settings.daily_work_hours, simulation.daily_work_hours]);
 
   useEffect(() => {
     setDurationInput(String(simulation.duration_s));
     setSpeedInput(String(simulation.speed));
     setSampleIntervalInput(String(simulation.utilization_sample_interval_s || 1));
-  }, [simulation.duration_s, simulation.speed, simulation.utilization_sample_interval_s]);
+    const dailyWorkHours = simulation.daily_work_hours || canvas.settings.daily_work_hours || 8;
+    setDurationValue(String(secondsToUnitValue(simulation.duration_s, durationTimeUnit, dailyWorkHours)));
+  }, [simulation.duration_s, simulation.speed, simulation.utilization_sample_interval_s, durationTimeUnit, canvas.settings.daily_work_hours, simulation.daily_work_hours]);
 
   useEffect(() => {
     if (simulation.state === 'running') {
@@ -78,18 +113,38 @@ export default function SimControlPanel() {
           lastTimeRef.current = timestamp;
         }
         
-        const deltaTime = (timestamp - lastTimeRef.current) / 1000;
+        const deltaTime = Math.min((timestamp - lastTimeRef.current) / 1000, 0.1);
         lastTimeRef.current = timestamp;
         
-        accumulatedTimeRef.current += deltaTime * speedRef.current;
+        accumulatedTimeRef.current += deltaTime * effectiveSpeedRef.current;
+        
+        const MAX_DT = 60;
+        const MAX_STEPS_PER_FRAME = 20;
+        const MAX_ACCUMULATED = MAX_DT * MAX_STEPS_PER_FRAME;
+        
+        if (accumulatedTimeRef.current > MAX_ACCUMULATED) {
+          accumulatedTimeRef.current = MAX_ACCUMULATED;
+        }
         
         if (!isSteppingRef.current && accumulatedTimeRef.current > 0) {
-          const dt = accumulatedTimeRef.current;
-          accumulatedTimeRef.current = 0;
           isSteppingRef.current = true;
           
           try {
-            const completed = await stepSimulationRef.current(dt);
+            let stepsThisFrame = 0;
+            let completed = false;
+            while (accumulatedTimeRef.current > 0 && stepsThisFrame < MAX_STEPS_PER_FRAME) {
+              const dt = Math.min(accumulatedTimeRef.current, MAX_DT);
+              accumulatedTimeRef.current -= dt;
+              completed = await stepSimulationRef.current(dt);
+              stepsThisFrame++;
+              if (completed) {
+                accumulatedTimeRef.current = 0;
+                break;
+              }
+            }
+            
+            await refreshLightweightStateRef.current();
+            
             if (completed) {
               isSteppingRef.current = false;
               return;
@@ -107,16 +162,28 @@ export default function SimControlPanel() {
       isSteppingRef.current = false;
       animationRef.current = requestAnimationFrame(animate);
       
+      fullStateTimerRef.current = window.setInterval(() => {
+        loadSimulationStateRef.current();
+      }, 1000);
+      
       return () => {
         if (animationRef.current) {
           cancelAnimationFrame(animationRef.current);
           animationRef.current = null;
+        }
+        if (fullStateTimerRef.current !== null) {
+          clearInterval(fullStateTimerRef.current);
+          fullStateTimerRef.current = null;
         }
       };
     } else {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
+      }
+      if (fullStateTimerRef.current !== null) {
+        clearInterval(fullStateTimerRef.current);
+        fullStateTimerRef.current = null;
       }
       lastTimeRef.current = 0;
       accumulatedTimeRef.current = 0;
@@ -182,10 +249,32 @@ export default function SimControlPanel() {
     }
   };
 
-  const handleDurationChange = () => {
-    const value = parseFloat(durationInput);
+  const handleDurationValueChange = () => {
+    const value = parseFloat(durationValue);
     if (!isNaN(value) && value > 0) {
-      setSimulationDuration(value);
+      const dailyWorkHours = simulation.daily_work_hours || canvas.settings.daily_work_hours || 8;
+      const seconds = unitValueToSeconds(value, durationTimeUnit, dailyWorkHours);
+      setSimulationDuration(seconds);
+      setDurationInput(String(seconds));
+    }
+  };
+
+  const handleDurationTimeUnitChange = (unit: SimulationTimeUnit) => {
+    const dailyWorkHours = simulation.daily_work_hours || canvas.settings.daily_work_hours || 8;
+    const currentSeconds = parseFloat(durationInput) || simulation.duration_s;
+    const newUnitValue = secondsToUnitValue(currentSeconds, unit, dailyWorkHours);
+    setDurationTimeUnit(unit);
+    setDurationValue(String(newUnitValue));
+  };
+
+  const handleDeadlineChange = () => {
+    const value = parseFloat(deadlineValue);
+    if (!isNaN(value) && value > 0) {
+      const dailyWorkHours = simulation.daily_work_hours || canvas.settings.daily_work_hours || 8;
+      const seconds = unitValueToSeconds(value, deadlineTimeUnit, dailyWorkHours);
+      setDeadline(seconds);
+    } else {
+      setDeadline(null);
     }
   };
 
@@ -502,7 +591,17 @@ export default function SimControlPanel() {
         </button>
 
         <div className="sim-time">
-          {formatTime(simulation.elapsed_s)} / {formatTime(simulation.duration_s)}
+          {(() => {
+            const dailyWorkHours = simulation.daily_work_hours || canvas.settings.daily_work_hours || 8;
+            const unitLabel = durationTimeUnit === 'seconds' ? '' : durationTimeUnit === 'minutes' ? '分' : durationTimeUnit === 'hours' ? '时' : '天';
+            const elapsed = durationTimeUnit === 'seconds'
+              ? formatTime(simulation.elapsed_s)
+              : `${secondsToUnitValue(simulation.elapsed_s, durationTimeUnit, dailyWorkHours).toFixed(2)} ${unitLabel}`;
+            const duration = durationTimeUnit === 'seconds'
+              ? formatTime(simulation.duration_s)
+              : `${secondsToUnitValue(simulation.duration_s, durationTimeUnit, dailyWorkHours).toFixed(2)} ${unitLabel}`;
+            return `${elapsed} / ${duration}`;
+          })()}
         </div>
 
         <div className="sim-stats">
@@ -529,17 +628,64 @@ export default function SimControlPanel() {
           </div>
           {(simulation.simulation_mode === 'fixed_duration' || !simulation.simulation_mode) && (
             <div className="sim-setting-item">
-              <label>模拟时长(秒)</label>
-              <input
-                type="number"
-                value={durationInput}
-                onChange={(e) => setDurationInput(e.target.value)}
-                onBlur={handleDurationChange}
-                onKeyDown={(e) => e.key === 'Enter' && handleDurationChange()}
-                disabled={isRunning}
-                min="1"
-                step="60"
-              />
+              <label>模拟时长</label>
+              <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                <input
+                  type="number"
+                  value={durationValue}
+                  onChange={(e) => setDurationValue(e.target.value)}
+                  onBlur={handleDurationValueChange}
+                  onKeyDown={(e) => e.key === 'Enter' && handleDurationValueChange()}
+                  disabled={isRunning}
+                  min="1"
+                  step="1"
+                  style={{ flex: 1 }}
+                />
+                <select
+                  value={durationTimeUnit}
+                  onChange={(e) => handleDurationTimeUnitChange(e.target.value as SimulationTimeUnit)}
+                  disabled={isRunning}
+                  style={{ minWidth: '60px' }}
+                >
+                  <option value="seconds">秒</option>
+                  <option value="minutes">分钟</option>
+                  <option value="hours">小时</option>
+                  <option value="days">天</option>
+                </select>
+              </div>
+            </div>
+          )}
+          {simulation.simulation_mode === 'fixed_output' && (
+            <div className="sim-setting-item">
+              <label>截止时间</label>
+              <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                <input
+                  type="number"
+                  value={deadlineValue}
+                  onChange={(e) => setDeadlineValue(e.target.value)}
+                  onBlur={handleDeadlineChange}
+                  onKeyDown={(e) => e.key === 'Enter' && handleDeadlineChange()}
+                  disabled={isRunning}
+                  min="1"
+                  step="1"
+                  placeholder="不限"
+                  style={{ flex: 1 }}
+                />
+                <select
+                  value={deadlineTimeUnit}
+                  onChange={(e) => {
+                    setDeadlineTimeUnit(e.target.value as SimulationTimeUnit);
+                    if (deadlineValue) handleDeadlineChange();
+                  }}
+                  disabled={isRunning}
+                  style={{ minWidth: '60px' }}
+                >
+                  <option value="seconds">秒</option>
+                  <option value="minutes">分钟</option>
+                  <option value="hours">小时</option>
+                  <option value="days">天</option>
+                </select>
+              </div>
             </div>
           )}
           <div className="sim-setting-item">
