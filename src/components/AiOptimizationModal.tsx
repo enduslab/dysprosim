@@ -215,6 +215,7 @@ export default function AiOptimizationModal({ onClose }: AiOptimizationModalProp
   const continueAiOptimization = useAppStore((s) => s.continueAiOptimization);
   const optimizationGoals = useAppStore((s) => s.optimizationGoals);
   const currentFilePath = useAppStore((s) => s.currentFilePath);
+  const testAiConnection = useAppStore((s) => s.testAiConnection);
 
   const [maxIterations, setMaxIterations] = useState(5);
   const [continueIterations, setContinueIterations] = useState(3);
@@ -222,6 +223,8 @@ export default function AiOptimizationModal({ onClose }: AiOptimizationModalProp
   const [savedFiles, setSavedFiles] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'progress' | 'report'>('progress');
   const [goals, setGoals] = useState<OptimizationGoal[]>([]);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const goalTypeLabels: Record<OptimizationGoalType, string> = {
     production_increase: '产量增加',
@@ -435,9 +438,33 @@ export default function AiOptimizationModal({ onClose }: AiOptimizationModalProp
     }
   }, [generateReportMd]);
 
-  const handleStartOptimization = useCallback(() => {
+  const handleStartOptimization = useCallback(async () => {
+    setConnectionError(null);
+    setTestingConnection(true);
+    try {
+      await testAiConnection();
+    } catch (error) {
+      setTestingConnection(false);
+      setConnectionError(`AI服务连接失败: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    setTestingConnection(false);
     runAiOptimization(maxIterations, goals);
-  }, [runAiOptimization, maxIterations, goals]);
+  }, [runAiOptimization, maxIterations, goals, testAiConnection]);
+
+  const handleContinueOptimization = useCallback(async (iterations: number) => {
+    setConnectionError(null);
+    setTestingConnection(true);
+    try {
+      await testAiConnection();
+    } catch (error) {
+      setTestingConnection(false);
+      setConnectionError(`AI服务连接失败: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    setTestingConnection(false);
+    continueAiOptimization(iterations);
+  }, [continueAiOptimization, testAiConnection]);
 
   useEffect(() => {
     if (optimizationResult && !optimizationRunning) {
@@ -596,12 +623,18 @@ export default function AiOptimizationModal({ onClose }: AiOptimizationModalProp
                         <li>瓶颈设备复制（每次最多增加3台）</li>
                       </ul>
                     </div>
+                    {connectionError && (
+                      <div className="ai-error" style={{ marginTop: '8px' }}>
+                        <div className="ai-error-msg">{connectionError}</div>
+                      </div>
+                    )}
                     <button
                       className="btn btn-primary"
                       onClick={handleStartOptimization}
                       style={{ width: '100%', marginTop: '12px' }}
+                      disabled={testingConnection}
                     >
-                      开始优化
+                      {testingConnection ? '测试连接中...' : '开始优化'}
                     </button>
                   </div>
                 )}
@@ -720,12 +753,18 @@ export default function AiOptimizationModal({ onClose }: AiOptimizationModalProp
                           </label>
                           <button
                             className="btn btn-primary"
-                            onClick={() => continueAiOptimization(continueIterations)}
+                            onClick={() => handleContinueOptimization(continueIterations)}
                             style={{ fontSize: '12px', padding: '4px 12px' }}
+                            disabled={testingConnection}
                           >
-                            继续优化
+                            {testingConnection ? '测试连接中...' : '继续优化'}
                           </button>
                         </div>
+                        {connectionError && (
+                          <div className="ai-error" style={{ marginTop: '6px' }}>
+                            <div className="ai-error-msg">{connectionError}</div>
+                          </div>
+                        )}
                         {optimizationGoals.length > 0 && (
                           <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--text-secondary)' }}>
                             当前目标：{[...optimizationGoals].sort((a, b) => a.priority - b.priority).map(g => {

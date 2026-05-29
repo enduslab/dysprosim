@@ -340,11 +340,13 @@ export default function AiAnalysisModal({ onClose }: AiAnalysisModalProps) {
   const aiAnalysisRecords = useAppStore((state) => state.aiAnalysisRecords);
   const loadAiAnalysisRecords = useAppStore((state) => state.loadAiAnalysisRecords);
   const getSimulationRecords = useAppStore((state) => state.getSimulationRecords);
+  const testAiConnection = useAppStore((state) => state.testAiConnection);
 
   const [activeTab, setActiveTab] = useState<TabType>('select');
   const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [testingConnection, setTestingConnection] = useState(false);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [selectedHistoryRecord, setSelectedHistoryRecord] = useState<AiAnalysisRecord | null>(null);
   const [simulationRecords, setSimulationRecords] = useState<SimulationRecord[]>([]);
@@ -429,6 +431,16 @@ export default function AiAnalysisModal({ onClose }: AiAnalysisModalProps) {
 
     setAnalysisError(null);
     setAnalysisResult(null);
+
+    setTestingConnection(true);
+    try {
+      await testAiConnection();
+    } catch (error) {
+      setTestingConnection(false);
+      setAnalysisError(`AI服务连接失败: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    setTestingConnection(false);
 
     const selectedRecords = simulationRecords.filter(r => selectedRecordIds.includes(r.id));
     const canvasData = {
@@ -624,8 +636,14 @@ export default function AiAnalysisModal({ onClose }: AiAnalysisModalProps) {
                 </div>
               )}
 
-              {(aiAnalysisLoading || analysisError) && (
+              {(aiAnalysisLoading || testingConnection || analysisError) && (
                 <div className="ai-analysis-status">
+                  {testingConnection && (
+                    <div className="ai-loading">
+                      <div className="ai-loading-spinner" />
+                      <span>正在测试AI服务连接...</span>
+                    </div>
+                  )}
                   {aiAnalysisLoading && (
                     <div className="ai-loading">
                       <div className="ai-loading-spinner" />
@@ -650,9 +668,9 @@ export default function AiAnalysisModal({ onClose }: AiAnalysisModalProps) {
                 <button
                   className="btn btn-primary"
                   onClick={handleSubmitAnalysis}
-                  disabled={selectedRecordIds.length === 0 || aiAnalysisLoading}
+                  disabled={selectedRecordIds.length === 0 || aiAnalysisLoading || testingConnection}
                 >
-                  {aiAnalysisLoading ? '分析中...' : '提交分析'}
+                  {testingConnection ? '测试连接中...' : aiAnalysisLoading ? '分析中...' : '提交分析'}
                 </button>
               </div>
             </div>
