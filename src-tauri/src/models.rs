@@ -734,6 +734,20 @@ impl Device {
         }
     }
 
+    pub fn equip_id(&self) -> &str {
+        match self {
+            Device::StartNode(d) => &d.base.equip_id,
+            Device::EndNode(d) => &d.base.equip_id,
+            Device::Station(d) => &d.base.equip_id,
+            Device::AssemblyStation(d) => &d.base.equip_id,
+            Device::DisassemblyStation(d) => &d.base.equip_id,
+            Device::Warehouse(d) => &d.base.equip_id,
+            Device::TempStore(d) => &d.base.equip_id,
+            Device::Buffer(d) => &d.base.equip_id,
+            Device::Workshop(d) => &d.base.equip_id,
+        }
+    }
+
     pub fn position(&self) -> (f64, f64) {
         match self {
             Device::StartNode(d) => (d.base.x_mm, d.base.y_mm),

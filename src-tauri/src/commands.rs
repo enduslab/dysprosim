@@ -2441,3 +2441,26 @@ pub fn open_user_manual(app: tauri::AppHandle) -> Result<(), String> {
 
     Ok(())
 }
+
+#[tauri::command]
+pub fn start_ws_server(port: u16) -> Result<u16, String> {
+    let mut server = crate::ws_server::WS_SERVER.lock().map_err(|e| e.to_string())?;
+    if server.is_running() {
+        return Ok(server.port());
+    }
+    server.start(port)?;
+    Ok(port)
+}
+
+#[tauri::command]
+pub fn stop_ws_server() -> Result<(), String> {
+    let mut server = crate::ws_server::WS_SERVER.lock().map_err(|e| e.to_string())?;
+    server.stop();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_ws_server_status() -> Result<bool, String> {
+    let server = crate::ws_server::WS_SERVER.lock().map_err(|e| e.to_string())?;
+    Ok(server.is_running())
+}

@@ -3,6 +3,7 @@ pub mod simulation;
 pub mod commands;
 pub mod state;
 pub mod ai;
+pub mod ws_server;
 
 use tauri::Manager;
 
@@ -82,6 +83,9 @@ pub fn run() {
             commands::set_canvas_state,
             commands::save_canvas_state_to_path,
             commands::write_text_to_file,
+            commands::start_ws_server,
+            commands::stop_ws_server,
+            commands::get_ws_server_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

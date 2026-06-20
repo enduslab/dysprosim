@@ -1,6 +1,6 @@
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -160,6 +160,8 @@ pub struct SimulationState {
     pub completion_status: crate::models::SimulationCompletionStatus,
     #[serde(default = "default_daily_work_hours")]
     pub daily_work_hours: f64,
+    #[serde(default)]
+    pub run_id: String,
 }
 
 fn default_utilization_sample_interval() -> f64 { 1.0 }
@@ -212,6 +214,7 @@ impl Default for SimulationState {
             deadline_s: None,
             completion_status: crate::models::SimulationCompletionStatus::Normal,
             daily_work_hours: 8.0,
+            run_id: String::new(),
         }
     }
 }
@@ -401,6 +404,12 @@ pub struct SimulationEngine {
     canvas_state: crate::models::CanvasState,
     event_queue: VecDeque<SimEvent>,
     rng: rand::rngs::StdRng,
+    ws_step_enter_times: HashMap<String, String>,
+    ws_last_step_end_tag: HashMap<String, String>,
+    ws_last_step_end_socketname: HashMap<String, String>,
+    ws_first_step_end_tag: Option<String>,
+    ws_first_step_end_socketname: Option<String>,
+    ws_entry_sent: HashSet<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -435,6 +444,12 @@ impl SimulationEngine {
             canvas_state,
             event_queue: VecDeque::new(),
             rng: rand::rngs::StdRng::from_entropy(),
+            ws_step_enter_times: HashMap::new(),
+            ws_last_step_end_tag: HashMap::new(),
+            ws_last_step_end_socketname: HashMap::new(),
+            ws_first_step_end_tag: None,
+            ws_first_step_end_socketname: None,
+            ws_entry_sent: HashSet::new(),
         }
     }
 
@@ -780,6 +795,7 @@ impl SimulationEngine {
                 if self.state.elapsed_s >= self.state.duration_s {
                     self.state.completion_status = crate::models::SimulationCompletionStatus::Normal;
                     self.state.state = SimState::Completed;
+                    self.broadcast_ws_process_completed();
                     return true;
                 }
             }
@@ -790,18 +806,21 @@ impl SimulationEngine {
                 if all_targets_reached && deadline_reached {
                     self.state.completion_status = crate::models::SimulationCompletionStatus::OnTime;
                     self.state.state = SimState::Completed;
+                    self.broadcast_ws_process_completed();
                     return true;
                 }
                 
                 if all_targets_reached {
                     self.state.completion_status = crate::models::SimulationCompletionStatus::TargetReachedEarly;
                     self.state.state = SimState::Completed;
+                    self.broadcast_ws_process_completed();
                     return true;
                 }
                 
                 if deadline_reached {
                     self.state.completion_status = crate::models::SimulationCompletionStatus::DeadlineNotMet;
                     self.state.state = SimState::Completed;
+                    self.broadcast_ws_process_completed();
                     return true;
                 }
             }
@@ -1321,6 +1340,17 @@ impl SimulationEngine {
             }
         }
 
+        // 广播三维模拟联动 step-end 事件
+        if !process_product_id.is_empty() {
+            let enter_time_str = self.ws_step_enter_times.remove(process_product_id)
+                .unwrap_or_default();
+            let duration = self.state.processing_records.get(device_id)
+                .and_then(|records| records.last())
+                .map(|r| r.duration_s)
+                .unwrap_or(0.0);
+            self.broadcast_ws_step_event("step-end", device_id, process_product_id, &enter_time_str, duration);
+        }
+
         let downstream_is_endnode = self.canvas_state.connections
             .values()
             .filter(|c| c.from_device_id == device_id)
@@ -1379,6 +1409,9 @@ impl SimulationEngine {
                         pp.current_node_id = Some(end_node_id.clone());
                         pp.current_connection_id = None;
                     }
+
+                    // 广播三维模拟联动 product-end 事件（普通工位）
+                    self.broadcast_ws_product_end(process_product_id, &end_node_id);
                 }
             }
 
@@ -1498,6 +1531,17 @@ impl SimulationEngine {
             }
         }
 
+        // 广播三维模拟联动 step-end 事件（装配站）
+        if !process_product_id.is_empty() {
+            let enter_time_str = self.ws_step_enter_times.remove(process_product_id)
+                .unwrap_or_default();
+            let duration = self.state.processing_records.get(device_id)
+                .and_then(|records| records.last())
+                .map(|r| r.duration_s)
+                .unwrap_or(0.0);
+            self.broadcast_ws_step_event("step-end", device_id, process_product_id, &enter_time_str, duration);
+        }
+
         let downstream_is_endnode = self.canvas_state.connections
             .values()
             .filter(|c| c.from_device_id == device_id)
@@ -1556,6 +1600,9 @@ impl SimulationEngine {
                         pp.current_node_id = Some(end_node_id.clone());
                         pp.current_connection_id = None;
                     }
+
+                    // 广播三维模拟联动 product-end 事件（普通工位）
+                    self.broadcast_ws_product_end(process_product_id, &end_node_id);
                 }
             }
 
@@ -1739,6 +1786,9 @@ impl SimulationEngine {
                                 });
                         }
                     }
+
+                    // 广播三维模拟联动 product-end 事件（运输到达终点节点）
+                    self.broadcast_ws_product_end(process_product_id, to_id);
                 }
                 Some(crate::models::Device::Warehouse(_)) | Some(crate::models::Device::TempStore(_)) => {
                     let product_code = self.state.process_products.get(process_product_id)
@@ -2931,6 +2981,182 @@ impl SimulationEngine {
         });
     }
 
+    fn broadcast_ws_step_event(&mut self, event_type: &str, device_id: &str, process_product_id: &str, enter_time: &str, duration: f64) {
+        let server = match crate::ws_server::WS_SERVER.lock() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        if !server.is_running() {
+            return;
+        }
+
+        let device = self.canvas_state.devices.get(device_id);
+        let step_name = device.map_or(String::new(), |d| d.name().to_string());
+        let tag = device.map_or(String::new(), |d| format!("+assetinsttag={}", d.equip_id()));
+        let socketname = device.map_or(String::new(), |d| {
+            match d {
+                crate::models::Device::StartNode(sn) => sn.base.desc.clone(),
+                crate::models::Device::EndNode(en) => en.base.desc.clone(),
+                crate::models::Device::Station(s) => s.base.desc.clone(),
+                crate::models::Device::AssemblyStation(a) => a.base.desc.clone(),
+                crate::models::Device::DisassemblyStation(d) => d.base.desc.clone(),
+                crate::models::Device::Warehouse(w) => w.base.desc.clone(),
+                crate::models::Device::TempStore(t) => t.base.desc.clone(),
+                crate::models::Device::Buffer(b) => b.base.desc.clone(),
+                crate::models::Device::Workshop(w) => w.base.desc.clone(),
+            }
+        });
+        let equip_id = device.map_or(String::new(), |d| d.equip_id().to_string());
+        let bneedpipe = crate::ws_server::compute_bneedpipe(&socketname).to_string();
+
+        let end_time = if event_type == "step-end" {
+            chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+        } else {
+            String::new()
+        };
+
+        let event = crate::ws_server::StepEvent {
+            event_type: event_type.to_string(),
+            run_id: self.state.run_id.clone(),
+            product_id: process_product_id.to_string(),
+            step_name: step_name.clone(),
+            device_id: "1".to_string(),
+            tag: tag.clone(),
+            neededtime: String::new(),
+            bneedpipe: bneedpipe.clone(),
+            socketname: socketname.clone(),
+            enter_time: enter_time.to_string(),
+            end_time,
+        };
+
+        // step-start首次进入生产节点时，先发送entry事件
+        if event_type == "step-start" && !self.ws_entry_sent.contains(process_product_id) {
+            self.ws_entry_sent.insert(process_product_id.to_string());
+            // 先发送文本消息
+            let entry_msg = format!("📥 产品[{}] 投入产线 - 时间:{}", process_product_id, enter_time);
+            server.broadcast_text(&entry_msg);
+            // 再发送entry JSON
+            let entry_event = crate::ws_server::EntryEvent {
+                event_type: "entry".to_string(),
+                run_id: self.state.run_id.clone(),
+                product_id: process_product_id.to_string(),
+                step_name: step_name.clone(),
+                tag: tag.clone(),
+                neededtime: String::new(),
+                bneedpipe: bneedpipe.clone(),
+                socketname: socketname.clone(),
+                enter_time: enter_time.to_string(),
+            };
+            server.broadcast_entry(&entry_event);
+        }
+
+        // 先发送文本消息，再发送JSON
+        if event_type == "step-start" {
+            let msg = format!("➡️ 产品[{}] 进入工艺[{}] - 设备[{}] - 时间:{}", process_product_id, step_name, equip_id, enter_time);
+            server.broadcast_text(&msg);
+        } else if event_type == "step-end" {
+            let msg = format!("✅ 产品[{}] 完成工艺[{}] - 设备[{}] - 时间:{} (耗时：{:.2})", process_product_id, step_name, equip_id, enter_time, duration);
+            server.broadcast_text(&msg);
+        }
+
+        server.broadcast(&event);
+
+        // step-end时存储tag和socketname
+        if event_type == "step-end" {
+            self.ws_last_step_end_tag.insert(process_product_id.to_string(), event.tag.clone());
+            self.ws_last_step_end_socketname.insert(process_product_id.to_string(), event.socketname.clone());
+            if self.ws_first_step_end_tag.is_none() {
+                self.ws_first_step_end_tag = Some(event.tag.clone());
+                self.ws_first_step_end_socketname = Some(event.socketname.clone());
+            }
+        }
+    }
+
+    fn broadcast_ws_ack(&self) {
+        let server = match crate::ws_server::WS_SERVER.lock() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        if !server.is_running() {
+            return;
+        }
+
+        let event = crate::ws_server::AckEvent {
+            ts: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            event_type: "ack".to_string(),
+            run_id: self.state.run_id.clone(),
+        };
+        server.broadcast_ack(&event);
+    }
+
+    fn broadcast_ws_product_end(&self, process_product_id: &str, _end_node_id: &str) {
+        let server = match crate::ws_server::WS_SERVER.lock() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        if !server.is_running() {
+            return;
+        }
+
+        // 使用前一个step-end的tag和socketname
+        let tag = self.ws_last_step_end_tag.get(process_product_id).cloned().unwrap_or_default();
+        let socketname = self.ws_last_step_end_socketname.get(process_product_id).cloned().unwrap_or_default();
+        let bneedpipe = crate::ws_server::compute_bneedpipe(&socketname).to_string();
+        let enter_time = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+        // 文本消息
+        let msg = format!("🏁 产品[{}] 全流程完成 - 时间:{}", process_product_id, enter_time);
+        server.broadcast_text(&msg);
+
+        // product-end JSON
+        let event = crate::ws_server::ProductEndEvent {
+            event_type: "product-end".to_string(),
+            run_id: self.state.run_id.clone(),
+            product_id: process_product_id.to_string(),
+            tag,
+            neededtime: String::new(),
+            bneedpipe,
+            socketname,
+            enter_time,
+        };
+        server.broadcast_product_end(&event);
+    }
+
+    fn broadcast_ws_process_completed(&self) {
+        let server = match crate::ws_server::WS_SERVER.lock() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        if !server.is_running() {
+            return;
+        }
+
+        let completed = self.state.completed_products;
+        let total_input: i32 = self.state.start_node_feed_counts.values().sum();
+
+        // 文本消息
+        let msg = format!("✅ 本次模拟完成：完成={}，总投入={}", completed, total_input);
+        server.broadcast_text(&msg);
+
+        // process-completed JSON - 使用第一个step-end的信息
+        let tag = self.ws_first_step_end_tag.clone().unwrap_or_default();
+        let socketname = self.ws_first_step_end_socketname.clone().unwrap_or_default();
+        let bneedpipe = crate::ws_server::compute_bneedpipe(&socketname).to_string();
+        let enter_time = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+        let event = crate::ws_server::ProcessCompletedEvent {
+            event_type: "process-completed".to_string(),
+            run_id: self.state.run_id.clone(),
+            tag,
+            neededtime: String::new(),
+            bneedpipe,
+            socketname,
+            enter_time,
+        };
+        server.broadcast_process_completed(&event);
+        server.close_all_clients();
+    }
+
     fn try_start_processing(&mut self, device_id: &str, time_s: f64, process_product_id: &str) {
         let sim_dev = match self.state.devices.get(device_id) {
             Some(d) => d.clone(),
@@ -3053,6 +3279,11 @@ impl SimulationEngine {
             .entry(device_id.to_string())
             .or_insert_with(Vec::new)
             .push(record);
+
+        // 广播三维模拟联动 step-start 事件
+        let enter_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        self.ws_step_enter_times.insert(pp_id.clone(), enter_time_str.clone());
+        self.broadcast_ws_step_event("step-start", device_id, &pp_id, &enter_time_str, 0.0);
 
         let complete_time = time_s + total_time;
         self.push_event(SimEvent::ProcessComplete {
@@ -4206,6 +4437,11 @@ impl SimulationEngine {
             .or_insert_with(Vec::new)
             .push(record);
 
+        // 广播三维模拟联动 step-start 事件（装配站）
+        let enter_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        self.ws_step_enter_times.insert(new_pp_id.clone(), enter_time_str.clone());
+        self.broadcast_ws_step_event("step-start", device_id, &new_pp_id, &enter_time_str, 0.0);
+
         let complete_time = time_s + total_time;
         self.push_event(SimEvent::AssemblyComplete {
             device_id: device_id.to_string(),
@@ -4397,6 +4633,11 @@ impl SimulationEngine {
             .or_insert_with(Vec::new)
             .push(record);
 
+        // 广播三维模拟联动 step-start 事件（拆卸站）
+        let enter_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        self.ws_step_enter_times.insert(item_pp_id.clone(), enter_time_str.clone());
+        self.broadcast_ws_step_event("step-start", device_id, &item_pp_id, &enter_time_str, 0.0);
+
         let complete_time = time_s + total_time;
         self.push_event(SimEvent::DisassemblyComplete {
             device_id: device_id.to_string(),
@@ -4428,7 +4669,7 @@ impl SimulationEngine {
         }
     }
 
-    fn handle_disassembly_complete(&mut self, device_id: &str, time_s: f64, _product_code: &str, _process_product_id: &str) {
+    fn handle_disassembly_complete(&mut self, device_id: &str, time_s: f64, _product_code: &str, process_product_id: &str) {
         if let Some(sim_dev) = self.state.devices.get_mut(device_id) {
             sim_dev.busy = false;
             sim_dev.completed += 1;
@@ -4442,6 +4683,17 @@ impl SimulationEngine {
             if let Some(last_record) = records.last_mut() {
                 last_record.end_time_s = time_s;
             }
+        }
+
+        // 广播三维模拟联动 step-end 事件（拆卸站）
+        if !process_product_id.is_empty() {
+            let enter_time_str = self.ws_step_enter_times.remove(process_product_id)
+                .unwrap_or_default();
+            let duration = self.state.processing_records.get(device_id)
+                .and_then(|records| records.last())
+                .map(|r| r.duration_s)
+                .unwrap_or(0.0);
+            self.broadcast_ws_step_event("step-end", device_id, process_product_id, &enter_time_str, duration);
         }
 
         let disassembly_products: Vec<String> = self.state.process_products.values()
@@ -4755,6 +5007,9 @@ impl SimulationEngine {
             pp.current_node_id = Some(end_node_id.clone());
             pp.current_connection_id = None;
         }
+
+        // 广播三维模拟联动 product-end 事件（仓库/缓存区信号完成）
+        self.broadcast_ws_product_end(process_product_id, &end_node_id);
 
         self.record_storage_utilization(storage_id, time_s);
     }
@@ -5565,6 +5820,10 @@ impl SimulationEngine {
 
     pub fn start(&mut self) {
         if self.state.state == SimState::Idle {
+            // 生成run_id
+            let run_id = format!("{:08x}", uuid::Uuid::new_v4().as_u128() & 0xFFFFFFFF);
+            self.state.run_id = run_id;
+            
             self.initialize();
             
             let events: Vec<SimEvent> = self.canvas_state.devices
@@ -5621,6 +5880,9 @@ impl SimulationEngine {
             }
         }
         self.state.state = SimState::Running;
+
+        // 广播三维模拟联动 ack 事件
+        self.broadcast_ws_ack();
     }
 
     pub fn pause(&mut self) {

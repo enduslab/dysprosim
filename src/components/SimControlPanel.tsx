@@ -44,6 +44,9 @@ export default function SimControlPanel() {
   const setWarehouseSelectionPriorities = useAppStore((state) => state.setWarehouseSelectionPriorities);
   const setProductSelectionStrategy = useAppStore((state) => state.setProductSelectionStrategy);
   const setConsiderProductPriority = useAppStore((state) => state.setConsiderProductPriority);
+  const ws3dEnabled = useAppStore((state) => state.ws3dEnabled);
+  const ws3dPort = useAppStore((state) => state.ws3dPort);
+  const toggleWs3d = useAppStore((state) => state.toggleWs3d);
   const setDeadline = useAppStore((state) => state.setDeadline);
   const loadSimulationState = useAppStore((state) => state.loadSimulationState);
   const saveSimulationRecord = useAppStore((state) => state.saveSimulationRecord);
@@ -831,6 +834,22 @@ export default function SimControlPanel() {
               />
               考虑产品优先级
             </label>
+          </div>
+          <div className="sim-setting-item">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '2px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={ws3dEnabled}
+                onChange={(e) => toggleWs3d(e.target.checked)}
+                style={{ margin: '0 2px 0 0' }}
+              />
+              三维模拟联动
+            </label>
+            {ws3dEnabled && (
+              <span style={{ fontSize: '11px', color: '#888', marginLeft: '4px' }}>
+                ws://localhost:{ws3dPort}/ws/simulation
+              </span>
+            )}
           </div>
         </div>
       )}

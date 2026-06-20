@@ -1,6 +1,6 @@
 [package]
 name = "dysprosim"
-version = "1.4.1"
+version = "1.4.2"
 description = "DysProSim - 离散生产与物流系统模拟工具"
 authors = ["上海云图数镜软件技术有限公司"]
 edition = "2021"
@@ -24,6 +24,9 @@ rand = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 reqwest = { version = "0.12", features = ["json"] }
 base64 = "0.22"
+tokio = { version = "1", features = ["full"] }
+tungstenite = "0.24"
+lazy_static = "1.4"
 
 [profile.release]
 panic = "abort"

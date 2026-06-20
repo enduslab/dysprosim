@@ -170,6 +170,10 @@ interface AppState {
   cancelAiOptimization: () => void;
   resetOptimization: () => void;
   continueAiOptimization: (additionalIterations: number) => Promise<void>;
+
+  ws3dEnabled: boolean;
+  ws3dPort: number;
+  toggleWs3d: (enabled: boolean) => Promise<void>;
 }
 
 function extractJson(text: string): string {
@@ -2497,5 +2501,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       optimizationResult: result,
       optimizationStatusMessage: stoppedReason,
     });
+  },
+
+  ws3dEnabled: false,
+  ws3dPort: 8080,
+  toggleWs3d: async (enabled: boolean) => {
+    try {
+      if (enabled) {
+        const port = await invoke<number>('start_ws_server', { port: get().ws3dPort });
+        set({ ws3dEnabled: true, ws3dPort: port });
+      } else {
+        await invoke('stop_ws_server');
+        set({ ws3dEnabled: false });
+      }
+    } catch (error) {
+      console.error('WebSocket 3D联动切换失败:', error);
+      set({ ws3dEnabled: false });
+    }
   },
 }));
