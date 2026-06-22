@@ -3,9 +3,26 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
 
-const DEFAULT_OLLAMA_BASE_URL: &str = "http://140.206.81.138:11434/v1";
-const DEFAULT_OLLAMA_MODEL: &str = "qwen3.6:latest";
 const API_TIMEOUT_SECS: u64 = 300;
+
+/// 获取已配置的AI API设置，如果未配置则返回错误
+fn get_configured_api(config: &AiApiConfig) -> Result<(String, String, String), String> {
+    if !config.use_custom_api {
+        return Err("未配置AI大模型API，请先在设置中配置AI大模型API".to_string());
+    }
+    let base_url = config
+        .custom_base_url
+        .as_ref()
+        .filter(|s| !s.trim().is_empty())
+        .ok_or("未配置API地址，请先在设置中配置AI大模型API")?;
+    let model = config
+        .custom_model
+        .as_ref()
+        .filter(|s| !s.trim().is_empty())
+        .ok_or("未配置模型名称，请先在设置中配置AI大模型API")?;
+    let api_key = config.custom_api_key.clone().unwrap_or_default();
+    Ok((base_url.clone(), api_key, model.clone()))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiApiConfig {
@@ -132,20 +149,7 @@ struct ChatResponse {
 #[tauri::command]
 pub async fn test_ai_connection(app: tauri::AppHandle) -> Result<String, String> {
     let config = get_ai_api_config(app)?;
-
-    let (base_url, api_key, model) = if config.use_custom_api {
-        let base_url = config
-            .custom_base_url
-            .ok_or("未配置自定义API地址")?;
-        let model = config.custom_model.ok_or("未配置自定义模型名称")?;
-        (base_url, config.custom_api_key.unwrap_or_default(), model)
-    } else {
-        (
-            DEFAULT_OLLAMA_BASE_URL.to_string(),
-            String::new(),
-            DEFAULT_OLLAMA_MODEL.to_string(),
-        )
-    };
+    let (base_url, api_key, model) = get_configured_api(&config)?;
 
     let url = format!(
         "{}/chat/completions",
@@ -408,20 +412,7 @@ pub async fn call_ai_analysis(
     record_count: usize,
 ) -> Result<String, String> {
     let config = get_ai_api_config(app)?;
-
-    let (base_url, api_key, model) = if config.use_custom_api {
-        let base_url = config
-            .custom_base_url
-            .ok_or("未配置自定义API地址")?;
-        let model = config.custom_model.ok_or("未配置自定义模型名称")?;
-        (base_url, config.custom_api_key.unwrap_or_default(), model)
-    } else {
-        (
-            DEFAULT_OLLAMA_BASE_URL.to_string(),
-            String::new(),
-            DEFAULT_OLLAMA_MODEL.to_string(),
-        )
-    };
+    let (base_url, api_key, model) = get_configured_api(&config)?;
 
     let url = format!(
         "{}/chat/completions",
@@ -614,20 +605,7 @@ pub async fn call_ai_optimization(
     previous_changes_json: Option<String>,
 ) -> Result<String, String> {
     let config = get_ai_api_config(app)?;
-
-    let (base_url, api_key, model) = if config.use_custom_api {
-        let base_url = config
-            .custom_base_url
-            .ok_or("未配置自定义API地址")?;
-        let model = config.custom_model.ok_or("未配置自定义模型名称")?;
-        (base_url, config.custom_api_key.unwrap_or_default(), model)
-    } else {
-        (
-            DEFAULT_OLLAMA_BASE_URL.to_string(),
-            String::new(),
-            DEFAULT_OLLAMA_MODEL.to_string(),
-        )
-    };
+    let (base_url, api_key, model) = get_configured_api(&config)?;
 
     let url = format!(
         "{}/chat/completions",

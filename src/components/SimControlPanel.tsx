@@ -86,6 +86,42 @@ export default function SimControlPanel() {
   const [showRuleHelp, setShowRuleHelp] = useState(false);
   const [showAiAnalysis, setShowAiAnalysis] = useState(false);
   const [showAiOptimization, setShowAiOptimization] = useState(false);
+  const [aiChecking, setAiChecking] = useState(false);
+
+  const loadAiApiConfig = useAppStore((state) => state.loadAiApiConfig);
+  const testAiConnection = useAppStore((state) => state.testAiConnection);
+
+  const handleAiClick = async (type: 'analysis' | 'optimization') => {
+    if (canvas.simulation_records.length === 0) return;
+    setAiChecking(true);
+    try {
+      await loadAiApiConfig();
+      const config = useAppStore.getState().aiApiConfig;
+      if (!config.use_custom_api || !config.custom_base_url?.trim() || !config.custom_model?.trim()) {
+        await message('请先在设置中配置AI大模型API', {
+          title: '未配置AI大模型',
+          kind: 'warning',
+        });
+        return;
+      }
+      try {
+        await testAiConnection();
+      } catch (e) {
+        await message(`AI大模型连接测试失败：${String(e).replace(/^Error:\s*/, '')}\n\n请检查设置中的AI大模型API配置`, {
+          title: '连接测试失败',
+          kind: 'error',
+        });
+        return;
+      }
+      if (type === 'analysis') {
+        setShowAiAnalysis(true);
+      } else {
+        setShowAiOptimization(true);
+      }
+    } finally {
+      setAiChecking(false);
+    }
+  };
   
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -595,22 +631,22 @@ export default function SimControlPanel() {
 
         <button
           className="sim-control-btn"
-          onClick={() => setShowAiAnalysis(true)}
+          onClick={() => handleAiClick('analysis')}
           title="AI分析"
-          disabled={canvas.simulation_records.length === 0}
-          style={canvas.simulation_records.length === 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+          disabled={canvas.simulation_records.length === 0 || aiChecking}
+          style={canvas.simulation_records.length === 0 || aiChecking ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
         >
-          <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '-0.5px' }}>AI</span>
+          <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '-0.5px' }}>{aiChecking ? '...' : 'AI'}</span>
         </button>
 
         <button
           className="sim-control-btn"
-          onClick={() => setShowAiOptimization(true)}
+          onClick={() => handleAiClick('optimization')}
           title="AI优化"
-          disabled={canvas.simulation_records.length === 0}
-          style={canvas.simulation_records.length === 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+          disabled={canvas.simulation_records.length === 0 || aiChecking}
+          style={canvas.simulation_records.length === 0 || aiChecking ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
         >
-          <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '-0.5px' }}>优化</span>
+          <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '-0.5px' }}>{aiChecking ? '...' : '优化'}</span>
         </button>
 
         <div className="sim-time">
