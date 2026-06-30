@@ -90,7 +90,8 @@ export default function Canvas() {
   selectedDeviceIdsRef.current = selectedDeviceIds;
 
   const [animationFrame, setAnimationFrame] = useState(0);
-  const [connectionDotPositions, setConnectionDotPositions] = useState<Record<string, number>>({});
+  const [forwardDotPositions, setForwardDotPositions] = useState<Record<string, number>>({});
+  const [returnDotPositions, setReturnDotPositions] = useState<Record<string, number>>({});
   const [feedAnimationActive, setFeedAnimationActive] = useState<Record<string, boolean>>({});
   const [completeAnimationActive, setCompleteAnimationActive] = useState<Record<string, boolean>>({});
 
@@ -125,53 +126,58 @@ export default function Canvas() {
     const animationLoop = setInterval(() => {
       setAnimationFrame(prev => prev + 1);
       
-      setConnectionDotPositions(prev => {
+      setForwardDotPositions(prev => {
+        const newPositions: Record<string, number> = { ...prev };
+        Object.keys(canvas.connections).forEach(connId => {
+          const conn = canvas.connections[connId];
+          const fromDevice = canvas.devices[conn.from_device_id];
+          const toDevice = canvas.devices[conn.to_device_id];
+          const connState = simulation.connections[connId];
+          
+          const hasForwardTransport = fromDevice?.type === 'StartNode'
+            ? feedAnimationActive[connId]
+            : toDevice?.type === 'EndNode'
+              ? completeAnimationActive[connId]
+              : connState && connState.inflight > 0;
+          
+          if (hasForwardTransport) {
+            const currentPos = prev[connId] || 0;
+            const newPos = currentPos + DOT_MOVE_SPEED;
+            newPositions[connId] = newPos >= 1 ? 0 : newPos;
+          } else {
+            newPositions[connId] = prev[connId] || 0;
+          }
+        });
+        return newPositions;
+      });
+
+      setReturnDotPositions(prev => {
         const newPositions: Record<string, number> = { ...prev };
         Object.keys(canvas.connections).forEach(connId => {
           const conn = canvas.connections[connId];
           const fromDevice = canvas.devices[conn.from_device_id];
           const toDevice = canvas.devices[conn.to_device_id];
           
-          if (fromDevice?.type === 'StartNode') {
-            if (feedAnimationActive[connId]) {
-              const currentPos = prev[connId] || 0;
-              const newPos = currentPos + DOT_MOVE_SPEED;
-              if (newPos >= 1) {
-                newPositions[connId] = 0;
-              } else {
-                newPositions[connId] = newPos;
-              }
-            } else {
-              newPositions[connId] = prev[connId] || 0;
-            }
-          } else if (toDevice?.type === 'EndNode') {
-            if (completeAnimationActive[connId]) {
-              const currentPos = prev[connId] || 0;
-              const newPos = currentPos + DOT_MOVE_SPEED;
-              if (newPos >= 1) {
-                newPositions[connId] = 0;
-              } else {
-                newPositions[connId] = newPos;
-              }
-            } else {
-              newPositions[connId] = prev[connId] || 0;
-            }
-          } else {
+          // 只有离散模式且非起点/终点连线才有小车返回
+          if (fromDevice?.type === 'StartNode' || toDevice?.type === 'EndNode') {
+            return;
+          }
+          
+          const connState = simulation.connections[connId];
+          if (!connState) return;
+          
+          const isDiscrete = conn.transport_mode === 'discrete';
+          if (!isDiscrete) return;
+          
+          const busyCarts = conn.cart_count - connState.idle_carts;
+          const returningCarts = busyCarts - connState.inflight;
+          
+          if (returningCarts > 0) {
             const currentPos = prev[connId] || 0;
-            const isContinuous = conn.transport_mode === 'continuous';
-            
-            if (isContinuous) {
-              const newPos = currentPos + DOT_MOVE_SPEED;
-              newPositions[connId] = newPos >= 1 ? 0 : newPos;
-            } else {
-              const speed = DOT_MOVE_SPEED;
-              const cycle = currentPos + speed;
-              if (cycle >= 2) {
-                newPositions[connId] = 0;
-              } else {
-                newPositions[connId] = cycle;
-              }
-            }
+            const newPos = currentPos + DOT_MOVE_SPEED;
+            newPositions[connId] = newPos >= 1 ? 0 : newPos;
+          } else {
+            newPositions[connId] = prev[connId] || 0;
           }
         });
         return newPositions;
@@ -179,7 +185,7 @@ export default function Canvas() {
     }, 50);
     
     return () => clearInterval(animationLoop);
-  }, [simulation.state, canvas.connections, canvas.devices, feedAnimationActive, completeAnimationActive]);
+  }, [simulation.state, simulation.connections, canvas.connections, canvas.devices, feedAnimationActive, completeAnimationActive]);
 
   const prevCompletedRef = useRef(simulation.completed_products);
   useEffect(() => {
@@ -2413,19 +2419,8 @@ export default function Canvas() {
     };
 
     const isSimRunning = simulation.state === 'running' || simulation.state === 'paused';
-    const dotPosition = connectionDotPositions[conn.id] || 0;
-    const isDiscrete = conn.transport_mode === 'discrete';
     
-    const renderAnimatedDot = () => {
-      if (!isSimRunning) return null;
-      
-      let actualPosition = dotPosition;
-      if (isDiscrete && fromDevice?.type !== 'StartNode' && toDevice?.type !== 'EndNode') {
-        actualPosition = dotPosition <= 1 ? dotPosition : 2 - dotPosition;
-      }
-      
-      let dotX: number, dotY: number;
-      
+    const getPositionOnPath = (position: number): { x: number; y: number } | null => {
       switch (conn.line_style) {
         case 'curve': {
           const cx = conn.curve_control_x !== null 
@@ -2434,10 +2429,11 @@ export default function Canvas() {
           const cy = conn.curve_control_y !== null 
             ? conn.curve_control_y 
             : (fromAnchor.y + toAnchor.y) / 2 - 50;
-          const t = actualPosition;
-          dotX = (1 - t) * (1 - t) * fromAnchor.x + 2 * (1 - t) * t * cx + t * t * toAnchor.x;
-          dotY = (1 - t) * (1 - t) * fromAnchor.y + 2 * (1 - t) * t * cy + t * t * toAnchor.y;
-          break;
+          const t = position;
+          return {
+            x: (1 - t) * (1 - t) * fromAnchor.x + 2 * (1 - t) * t * cx + t * t * toAnchor.x,
+            y: (1 - t) * (1 - t) * fromAnchor.y + 2 * (1 - t) * t * cy + t * t * toAnchor.y,
+          };
         }
         case 'free_polyline':
         case 'elbow': {
@@ -2456,39 +2452,87 @@ export default function Canvas() {
           const allPoints = [fromAnchor, ...intermediatePoints, toAnchor];
           const totalSegments = allPoints.length - 1;
           const segmentLength = 1 / totalSegments;
-          const currentSegment = Math.min(Math.floor(actualPosition / segmentLength), totalSegments - 1);
-          const segmentProgress = (actualPosition - currentSegment * segmentLength) / segmentLength;
+          const currentSegment = Math.min(Math.floor(position / segmentLength), totalSegments - 1);
+          const segmentProgress = (position - currentSegment * segmentLength) / segmentLength;
           
           const startPoint = allPoints[currentSegment];
           const endPoint = allPoints[currentSegment + 1];
           
-          dotX = startPoint.x + (endPoint.x - startPoint.x) * segmentProgress;
-          dotY = startPoint.y + (endPoint.y - startPoint.y) * segmentProgress;
-          break;
+          return {
+            x: startPoint.x + (endPoint.x - startPoint.x) * segmentProgress,
+            y: startPoint.y + (endPoint.y - startPoint.y) * segmentProgress,
+          };
         }
         default: {
-          dotX = fromAnchor.x + (toAnchor.x - fromAnchor.x) * actualPosition;
-          dotY = fromAnchor.y + (toAnchor.y - fromAnchor.y) * actualPosition;
+          return {
+            x: fromAnchor.x + (toAnchor.x - fromAnchor.x) * position,
+            y: fromAnchor.y + (toAnchor.y - fromAnchor.y) * position,
+          };
+        }
+      }
+    };
+    
+    const renderAnimatedDots = () => {
+      if (!isSimRunning) return null;
+      
+      const dots: JSX.Element[] = [];
+      
+      // 正向：产品从上游到下游
+      const forwardPos = forwardDotPositions[conn.id] || 0;
+      const hasForwardTransport = fromDevice?.type === 'StartNode'
+        ? feedAnimationActive[conn.id]
+        : toDevice?.type === 'EndNode'
+          ? completeAnimationActive[conn.id]
+          : simulation.connections[conn.id] && simulation.connections[conn.id].inflight > 0;
+      
+      if (hasForwardTransport && forwardPos > 0) {
+        const pos = getPositionOnPath(forwardPos);
+        if (pos) {
+          dots.push(
+            <circle
+              key="forward"
+              cx={pos.x}
+              cy={pos.y}
+              r={5}
+              fill="#3B82F6"
+              stroke="#FFFFFF"
+              strokeWidth={1.5}
+              style={{ pointerEvents: 'none' }}
+            />
+          );
         }
       }
       
-      const shouldShowDot = fromDevice?.type === 'StartNode' || toDevice?.type === 'EndNode'
-        ? dotPosition > 0
-        : true;
+      // 反向：小车从下游返回上游（仅离散模式）
+      const returnPos = returnDotPositions[conn.id] || 0;
+      const connState = simulation.connections[conn.id];
+      const isDiscrete = conn.transport_mode === 'discrete';
+      const hasReturnTransport = isDiscrete
+        && fromDevice?.type !== 'StartNode'
+        && toDevice?.type !== 'EndNode'
+        && connState
+        && (conn.cart_count - connState.idle_carts - connState.inflight) > 0;
       
-      if (!shouldShowDot) return null;
+      if (hasReturnTransport && returnPos > 0) {
+        // 反向：position从1到0（下游到上游）
+        const pos = getPositionOnPath(1 - returnPos);
+        if (pos) {
+          dots.push(
+            <circle
+              key="return"
+              cx={pos.x}
+              cy={pos.y}
+              r={5}
+              fill="#F97316"
+              stroke="#FFFFFF"
+              strokeWidth={1.5}
+              style={{ pointerEvents: 'none' }}
+            />
+          );
+        }
+      }
       
-      return (
-        <circle
-          cx={dotX}
-          cy={dotY}
-          r={5}
-          fill="#3B82F6"
-          stroke="#FFFFFF"
-          strokeWidth={1.5}
-          style={{ pointerEvents: 'none' }}
-        />
-      );
+      return dots.length > 0 ? <>{dots}</> : null;
     };
 
     const renderUtilizationBadge = () => {
@@ -2584,7 +2628,7 @@ export default function Canvas() {
     return (
       <g key={conn.id}>
         {renderLine()}
-        {renderAnimatedDot()}
+        {renderAnimatedDots()}
         {renderControlPoints()}
         {renderUtilizationBadge()}
       </g>

@@ -879,7 +879,7 @@ export default function SimControlPanel() {
                 onChange={(e) => toggleWs3d(e.target.checked)}
                 style={{ margin: '0 2px 0 0' }}
               />
-              三维模拟联动
+              启动websocket服务
             </label>
             {ws3dEnabled && (
               <span style={{ fontSize: '11px', color: '#888', marginLeft: '4px' }}>
