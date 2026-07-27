@@ -1,0 +1,96 @@
+Date : 2026-07-27 16:48:16
+Directory : c:\workspace\DysProSim-rr\dysprosim-tauri
+Total : 51 files,  47206 codes, 36 comments, 4034 blanks, all 51276 lines
+
+Languages
++--------------------+------------+------------+------------+------------+------------+
+| language           | files      | code       | comment    | blank      | total      |
++--------------------+------------+------------+------------+------------+------------+
+| JSON               |          9 |     15,449 |          0 |          5 |     15,454 |
+| TypeScript JSX     |         20 |     13,281 |          4 |      1,065 |     14,350 |
+| Rust               |          9 |     10,242 |         29 |      1,427 |     11,698 |
+| TypeScript         |          4 |      3,185 |          3 |        326 |      3,514 |
+| PostCSS            |          1 |      1,695 |          0 |        269 |      1,964 |
+| Markdown           |          4 |      1,684 |          0 |        715 |      2,399 |
+| HTML               |          2 |      1,594 |          0 |        211 |      1,805 |
+| JavaScript         |          1 |         55 |          0 |         15 |         70 |
+| JSON with Comments |          1 |         21 |          0 |          1 |         22 |
++--------------------+------------+------------+------------+------------+------------+
+
+Directories
++-------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                                                | files      | code       | comment    | blank      | total      |
++-------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                                   |         51 |     47,206 |         36 |      4,034 |     51,276 |
+| . (Files)                                                                           |         10 |      4,776 |          0 |        722 |      5,498 |
+| scripts                                                                             |          1 |         55 |          0 |         15 |         70 |
+| src                                                                                 |         24 |     18,148 |          7 |      1,658 |     19,813 |
+| src (Files)                                                                         |          4 |      4,096 |          3 |        496 |      4,595 |
+| src-tauri                                                                           |         16 |     24,227 |         29 |      1,639 |     25,895 |
+| src-tauri (Files)                                                                   |          3 |      1,642 |          0 |        212 |      1,854 |
+| src-tauri\capabilities                                                              |          1 |         28 |          0 |          1 |         29 |
+| src-tauri\gen                                                                       |          4 |     12,318 |          0 |          0 |     12,318 |
+| src-tauri\gen\schemas                                                               |          4 |     12,318 |          0 |          0 |     12,318 |
+| src-tauri\src                                                                       |          8 |     10,239 |         29 |      1,426 |     11,694 |
+| src\components                                                                      |         18 |     13,184 |          4 |      1,054 |     14,242 |
+| src\types                                                                           |          1 |        590 |          0 |         75 |        665 |
+| src\utils                                                                           |          1 |        278 |          0 |         33 |        311 |
++-------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++-------------------------------------------------------------------------------------+--------------------+------------+------------+------------+------------+
+| filename                                                                            | language           | code       | comment    | blank      | total      |
++-------------------------------------------------------------------------------------+--------------------+------------+------------+------------+------------+
+| c:\workspace\DysProSim-rr\dysprosim-tauri\README.md                                 | Markdown           |        161 |          0 |         70 |        231 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\index.html                                | HTML               |         12 |          0 |          1 |         13 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\package-lock.json                         | JSON               |      3,000 |          0 |          1 |      3,001 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\package.json                              | JSON               |         35 |          0 |          1 |         36 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\scripts\generate-icon.mjs                 | JavaScript         |         55 |          0 |         15 |         70 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\build.rs                        | Rust               |          3 |          0 |          1 |          4 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\capabilities\default.json       | JSON               |         28 |          0 |          1 |         29 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\gen\schemas\acl-manifests.json  | JSON               |          1 |          0 |          0 |          1 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\gen\schemas\capabilities.json   | JSON               |          1 |          0 |          0 |          1 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\gen\schemas\desktop-schema.json | JSON               |      6,158 |          0 |          0 |      6,158 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\gen\schemas\windows-schema.json | JSON               |      6,158 |          0 |          0 |      6,158 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\src\ai.rs                       | Rust               |        558 |          1 |        163 |        722 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\src\commands.rs                 | Rust               |      2,210 |          0 |        257 |      2,467 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\src\lib.rs                      | Rust               |         90 |          0 |          3 |         93 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\src\main.rs                     | Rust               |          4 |          0 |          2 |          6 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\src\models.rs                   | Rust               |      1,101 |          0 |         94 |      1,195 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\src\simulation.rs               | Rust               |      6,016 |         22 |        870 |      6,908 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\src\state.rs                    | Rust               |         17 |          0 |          3 |         20 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\src\ws_server.rs                | Rust               |        243 |          6 |         34 |        283 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\tauri.conf.json                 | JSON               |         57 |          0 |          1 |         58 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\usermanual.html                 | HTML               |      1,582 |          0 |        210 |      1,792 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\App.tsx                               | TypeScript JSX     |         88 |          0 |          9 |         97 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\AboutDialog.tsx            | TypeScript JSX     |         60 |          0 |          7 |         67 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\AiAnalysisModal.tsx        | TypeScript JSX     |        675 |          0 |         70 |        745 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\AiOptimizationModal.tsx    | TypeScript JSX     |        775 |          0 |         59 |        834 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\Canvas.tsx                 | TypeScript JSX     |      2,567 |          4 |        199 |      2,770 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\MaterialManager.tsx        | TypeScript JSX     |        163 |          0 |         18 |        181 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\MenuBar.tsx                | TypeScript JSX     |        353 |          0 |         29 |        382 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\Modal.tsx                  | TypeScript JSX     |         45 |          0 |          6 |         51 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\ProductManager.tsx         | TypeScript JSX     |        188 |          0 |         18 |        206 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\ProductRoutesModal.tsx     | TypeScript JSX     |        466 |          0 |         33 |        499 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\PropertiesPanel.tsx        | TypeScript JSX     |      2,899 |          0 |        136 |      3,035 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\SettingsDialog.tsx         | TypeScript JSX     |        217 |          0 |         25 |        242 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\SimControlDialog.tsx       | TypeScript JSX     |        166 |          0 |         18 |        184 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\SimControlPanel.tsx        | TypeScript JSX     |        833 |          0 |         78 |        911 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\SimulationRecordsModal.tsx | TypeScript JSX     |      3,095 |          0 |        287 |      3,382 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\StatusBar.tsx              | TypeScript JSX     |         55 |          0 |          5 |         60 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\ToolManager.tsx            | TypeScript JSX     |        138 |          0 |         17 |        155 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\Toolbox.tsx                | TypeScript JSX     |        328 |          0 |         37 |        365 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\ValidationErrorModal.tsx   | TypeScript JSX     |        161 |          0 |         12 |        173 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\main.tsx                              | TypeScript JSX     |          9 |          0 |          2 |         11 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\store.ts                              | TypeScript         |      2,304 |          3 |        216 |      2,523 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\styles.css                            | PostCSS            |      1,695 |          0 |        269 |      1,964 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\types\index.ts                        | TypeScript         |        590 |          0 |         75 |        665 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\src\utils\connectionUtils.ts              | TypeScript         |        278 |          0 |         33 |        311 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\tsconfig.json                             | JSON with Comments |         21 |          0 |          1 |         22 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\tsconfig.node.json                        | JSON               |         11 |          0 |          1 |         12 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\vite.config.ts                            | TypeScript         |         13 |          0 |          2 |         15 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\可选模拟控制项.md                                | Markdown           |        123 |          0 |         81 |        204 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\操作手册.md                                   | Markdown           |      1,039 |          0 |        360 |      1,399 |
+| c:\workspace\DysProSim-rr\dysprosim-tauri\规则说明.md                                   | Markdown           |        361 |          0 |        204 |        565 |
+| Total                                                                               |                    |     47,206 |         36 |      4,034 |     51,276 |
++-------------------------------------------------------------------------------------+--------------------+------------+------------+------------+------------+

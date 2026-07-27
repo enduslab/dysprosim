@@ -1,0 +1,53 @@
+"filename", "language", "HTML", "Markdown", "TypeScript", "JSON", "JSON with Comments", "Rust", "TypeScript JSX", "PostCSS", "JavaScript", "comment", "blank", "total"
+"c:\workspace\DysProSim-rr\dysprosim-tauri\README.md", "Markdown", 0, 161, 0, 0, 0, 0, 0, 0, 0, 0, 70, 231
+"c:\workspace\DysProSim-rr\dysprosim-tauri\index.html", "HTML", 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 13
+"c:\workspace\DysProSim-rr\dysprosim-tauri\package-lock.json", "JSON", 0, 0, 0, 3000, 0, 0, 0, 0, 0, 0, 1, 3001
+"c:\workspace\DysProSim-rr\dysprosim-tauri\package.json", "JSON", 0, 0, 0, 35, 0, 0, 0, 0, 0, 0, 1, 36
+"c:\workspace\DysProSim-rr\dysprosim-tauri\scripts\generate-icon.mjs", "JavaScript", 0, 0, 0, 0, 0, 0, 0, 0, 55, 0, 15, 70
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\build.rs", "Rust", 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 1, 4
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\capabilities\default.json", "JSON", 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 1, 29
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\gen\schemas\acl-manifests.json", "JSON", 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\gen\schemas\capabilities.json", "JSON", 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\gen\schemas\desktop-schema.json", "JSON", 0, 0, 0, 6158, 0, 0, 0, 0, 0, 0, 0, 6158
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\gen\schemas\windows-schema.json", "JSON", 0, 0, 0, 6158, 0, 0, 0, 0, 0, 0, 0, 6158
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\src\ai.rs", "Rust", 0, 0, 0, 0, 0, 558, 0, 0, 0, 1, 163, 722
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\src\commands.rs", "Rust", 0, 0, 0, 0, 0, 2210, 0, 0, 0, 0, 257, 2467
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\src\lib.rs", "Rust", 0, 0, 0, 0, 0, 90, 0, 0, 0, 0, 3, 93
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\src\main.rs", "Rust", 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 2, 6
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\src\models.rs", "Rust", 0, 0, 0, 0, 0, 1101, 0, 0, 0, 0, 94, 1195
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\src\simulation.rs", "Rust", 0, 0, 0, 0, 0, 6016, 0, 0, 0, 22, 870, 6908
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\src\state.rs", "Rust", 0, 0, 0, 0, 0, 17, 0, 0, 0, 0, 3, 20
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\src\ws_server.rs", "Rust", 0, 0, 0, 0, 0, 243, 0, 0, 0, 6, 34, 283
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\tauri.conf.json", "JSON", 0, 0, 0, 57, 0, 0, 0, 0, 0, 0, 1, 58
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src-tauri\usermanual.html", "HTML", 1582, 0, 0, 0, 0, 0, 0, 0, 0, 0, 210, 1792
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\App.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 88, 0, 0, 0, 9, 97
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\AboutDialog.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 7, 67
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\AiAnalysisModal.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 675, 0, 0, 0, 70, 745
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\AiOptimizationModal.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 775, 0, 0, 0, 59, 834
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\Canvas.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 2567, 0, 0, 4, 199, 2770
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\MaterialManager.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 163, 0, 0, 0, 18, 181
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\MenuBar.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 353, 0, 0, 0, 29, 382
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\Modal.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 45, 0, 0, 0, 6, 51
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\ProductManager.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 188, 0, 0, 0, 18, 206
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\ProductRoutesModal.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 466, 0, 0, 0, 33, 499
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\PropertiesPanel.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 2899, 0, 0, 0, 136, 3035
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\SettingsDialog.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 217, 0, 0, 0, 25, 242
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\SimControlDialog.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 166, 0, 0, 0, 18, 184
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\SimControlPanel.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 833, 0, 0, 0, 78, 911
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\SimulationRecordsModal.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 3095, 0, 0, 0, 287, 3382
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\StatusBar.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 55, 0, 0, 0, 5, 60
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\ToolManager.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 138, 0, 0, 0, 17, 155
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\Toolbox.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 328, 0, 0, 0, 37, 365
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\components\ValidationErrorModal.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 161, 0, 0, 0, 12, 173
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\main.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 2, 11
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\store.ts", "TypeScript", 0, 0, 2304, 0, 0, 0, 0, 0, 0, 3, 216, 2523
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\styles.css", "PostCSS", 0, 0, 0, 0, 0, 0, 0, 1695, 0, 0, 269, 1964
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\types\index.ts", "TypeScript", 0, 0, 590, 0, 0, 0, 0, 0, 0, 0, 75, 665
+"c:\workspace\DysProSim-rr\dysprosim-tauri\src\utils\connectionUtils.ts", "TypeScript", 0, 0, 278, 0, 0, 0, 0, 0, 0, 0, 33, 311
+"c:\workspace\DysProSim-rr\dysprosim-tauri\tsconfig.json", "JSON with Comments", 0, 0, 0, 0, 21, 0, 0, 0, 0, 0, 1, 22
+"c:\workspace\DysProSim-rr\dysprosim-tauri\tsconfig.node.json", "JSON", 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 1, 12
+"c:\workspace\DysProSim-rr\dysprosim-tauri\vite.config.ts", "TypeScript", 0, 0, 13, 0, 0, 0, 0, 0, 0, 0, 2, 15
+"c:\workspace\DysProSim-rr\dysprosim-tauri\可选模拟控制项.md", "Markdown", 0, 123, 0, 0, 0, 0, 0, 0, 0, 0, 81, 204
+"c:\workspace\DysProSim-rr\dysprosim-tauri\操作手册.md", "Markdown", 0, 1039, 0, 0, 0, 0, 0, 0, 0, 0, 360, 1399
+"c:\workspace\DysProSim-rr\dysprosim-tauri\规则说明.md", "Markdown", 0, 361, 0, 0, 0, 0, 0, 0, 0, 0, 204, 565
+"Total", "-", 1594, 1684, 3185, 15449, 21, 10242, 13281, 1695, 55, 36, 4034, 51276

@@ -181,7 +181,7 @@
 <body>
     <div class="header">
         <h1>DysProSim 操作手册</h1>
-        <div class="version">版本：v1.4.2</div>
+        <div class="version">版本：v1.4.3</div>
     </div>
     
     <div class="container">
@@ -194,6 +194,7 @@
                 <li><a href="#section4">4. 画布操作</a></li>
                 <li><a href="#section5">5. 产品管理</a></li>
                 <li><a href="#section6">6. 物料管理</a></li>
+                <li><a href="#section6a">6A. 工具管理</a></li>
                 <li><a href="#section7">7. 节点创建与配置</a></li>
                 <li><a href="#section8">8. 连线创建与配置</a></li>
                 <li><a href="#section9">9. 模拟运行</a></li>
@@ -210,7 +211,7 @@
             <p>软件界面由以下主要区域组成：</p>
             <table>
                 <tr><th>区域</th><th>位置</th><th>功能</th></tr>
-                <tr><td>菜单栏</td><td>顶部</td><td>文件、编辑、视图、设置、帮助等菜单</td></tr>
+                <tr><td>菜单栏</td><td>顶部</td><td>文件、编辑、设置、产品、模拟、帮助等菜单</td></tr>
                 <tr><td>工具箱</td><td>左侧</td><td>选择工具、设备创建、连线创建等</td></tr>
                 <tr><td>画布</td><td>中央</td><td>模型编辑区域</td></tr>
                 <tr><td>属性面板</td><td>右侧</td><td>显示和编辑选中对象的属性</td></tr>
@@ -221,77 +222,18 @@
             
             <h3>2.1 文件菜单</h3>
             
-            <h4>新建画布</h4>
+            <h4>新建布局</h4>
             <ol>
                 <li>点击菜单栏 <strong>「文件」</strong></li>
-                <li>选择 <strong>「新建」</strong></li>
+                <li>选择 <strong>「新建布局」</strong>（快捷键 <code>Ctrl+N</code>）</li>
                 <li>如当前画布有内容，系统会询问是否保存</li>
                 <li>选择保存或不保存后，画布将被清空</li>
             </ol>
             
-            <h4>打开文件</h4>
+            <h4>修改画布尺寸</h4>
             <ol>
                 <li>点击菜单栏 <strong>「文件」</strong></li>
-                <li>选择 <strong>「打开」</strong></li>
-                <li>在弹出的文件选择对话框中，选择 <code>.json</code> 格式的布局文件</li>
-                <li>点击「打开」按钮</li>
-            </ol>
-            
-            <h4>保存文件</h4>
-            <ol>
-                <li>点击菜单栏 <strong>「文件」</strong></li>
-                <li>选择 <strong>「保存」</strong> 或 <strong>「另存为」</strong></li>
-                <li>选择保存位置并输入文件名</li>
-                <li>点击「保存」按钮</li>
-            </ol>
-            
-            <h4>导出图片</h4>
-            <ol>
-                <li>点击菜单栏 <strong>「文件」</strong></li>
-                <li>选择 <strong>「导出图片」</strong></li>
-                <li>选择保存位置并输入文件名</li>
-                <li>图片将以 PNG 格式保存</li>
-            </ol>
-            
-            <h3>2.2 编辑菜单</h3>
-            
-            <h4>删除选中对象</h4>
-            <ol>
-                <li>选中要删除的设备或连线</li>
-                <li>点击菜单栏 <strong>「编辑」</strong></li>
-                <li>选择 <strong>「删除」</strong></li>
-                <li>或直接按 <code>Delete</code> 键</li>
-            </ol>
-            
-            <h4>清空画布</h4>
-            <ol>
-                <li>点击菜单栏 <strong>「编辑」</strong></li>
-                <li>选择 <strong>「清空画布」</strong></li>
-                <li>确认清空操作</li>
-            </ol>
-            
-            <h3>2.3 视图菜单</h3>
-            
-            <h4>缩放操作</h4>
-            <ol>
-                <li>点击菜单栏 <strong>「视图」</strong></li>
-                <li>选择 <strong>「放大」</strong> 或 <strong>「缩小」</strong></li>
-                <li>或使用鼠标滚轮进行缩放</li>
-            </ol>
-            
-            <h4>重置视图</h4>
-            <ol>
-                <li>点击菜单栏 <strong>「视图」</strong></li>
-                <li>选择 <strong>「重置视图」</strong></li>
-                <li>画布将恢复到初始缩放和位置</li>
-            </ol>
-            
-            <h3>2.4 设置菜单</h3>
-            
-            <h4>画布设置</h4>
-            <ol>
-                <li>点击菜单栏 <strong>「设置」</strong></li>
-                <li>选择 <strong>「画布设置」</strong></li>
+                <li>选择 <strong>「修改画布尺寸」</strong></li>
                 <li>在弹出的对话框中设置：
                     <ul>
                         <li>画布宽度（毫米）</li>
@@ -301,51 +243,141 @@
                 <li>点击「确定」保存设置</li>
             </ol>
             
-            <h4>产品管理</h4>
+            <h4>保存布局</h4>
             <ol>
-                <li>点击菜单栏 <strong>「设置」</strong></li>
-                <li>选择 <strong>「产品管理」</strong></li>
-                <li>在弹出的对话框中进行产品配置</li>
+                <li>点击菜单栏 <strong>「文件」</strong></li>
+                <li>选择 <strong>「保存布局」</strong>（快捷键 <code>Ctrl+S</code>）</li>
+                <li>首次保存会弹出保存对话框，选择保存位置并输入文件名</li>
+                <li>后续保存将直接覆盖当前文件</li>
             </ol>
             
-            <h4>物料管理</h4>
+            <h4>另存为...</h4>
             <ol>
-                <li>点击菜单栏 <strong>「设置」</strong></li>
-                <li>选择 <strong>「物料管理」</strong></li>
-                <li>在弹出的对话框中进行物料配置</li>
+                <li>点击菜单栏 <strong>「文件」</strong></li>
+                <li>选择 <strong>「另存为...」</strong></li>
+                <li>选择新位置或新文件名</li>
+                <li>点击「保存」按钮</li>
             </ol>
             
-            <h4>工具管理</h4>
+            <h4>加载布局</h4>
             <ol>
-                <li>点击菜单栏 <strong>「设置」</strong></li>
-                <li>选择 <strong>「工具管理」</strong></li>
-                <li>在弹出的对话框中进行工具配置</li>
+                <li>点击菜单栏 <strong>「文件」</strong></li>
+                <li>选择 <strong>「加载布局」</strong>（快捷键 <code>Ctrl+O</code>）</li>
+                <li>在弹出的文件选择对话框中，选择 <code>.json</code> 格式的布局文件</li>
+                <li>点击「打开」按钮</li>
             </ol>
             
-            <p><strong>工具配置说明：</strong></p>
+            <h4>退出</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「文件」</strong></li>
+                <li>选择 <strong>「退出」</strong></li>
+                <li>关闭应用程序</li>
+            </ol>
+            
+            <h3>2.2 编辑菜单</h3>
+            
+            <h4>撤销与重做</h4>
             <ul>
-                <li><strong>工具编码：</strong>工具的唯一标识符</li>
-                <li><strong>工具名称：</strong>工具的显示名称</li>
+                <li><strong>撤销</strong>：<code>Ctrl+Z</code>，撤销上一步操作</li>
+                <li><strong>重做</strong>：<code>Ctrl+Y</code>，恢复已撤销的操作</li>
             </ul>
             
-            <p><strong>工具管理操作：</strong></p>
+            <h4>选择操作</h4>
             <ul>
-                <li>点击 <strong>「新建工具」</strong> 创建新工具</li>
-                <li>点击 <strong>「编辑」</strong> 修改已有工具</li>
-                <li>点击 <strong>「删除」</strong> 删除工具</li>
+                <li><strong>全选</strong>：<code>Ctrl+A</code>，选中画布上所有设备</li>
+                <li><strong>取消选择</strong>：<code>Esc</code>，取消当前所有选择</li>
             </ul>
             
-            <div class="note">
-                <strong>注意：</strong>工具的安装时间需要在加工站的产品配置中单独设置，因为同一工具在不同产品加工时可能需要不同的安装时间。
-            </div>
+            <h4>对齐操作</h4>
+            <p>选中至少两个设备后，可使用对齐功能：</p>
+            <table>
+                <tr><th>命令</th><th>说明</th></tr>
+                <tr><td>左对齐</td><td>将选中设备的左边缘对齐</td></tr>
+                <tr><td>水平居中</td><td>将选中设备水平居中对齐</td></tr>
+                <tr><td>右对齐</td><td>将选中设备的右边缘对齐</td></tr>
+                <tr><td>顶对齐</td><td>将选中设备的顶边对齐</td></tr>
+                <tr><td>垂直居中</td><td>将选中设备垂直居中对齐</td></tr>
+                <tr><td>底对齐</td><td>将选中设备的底边对齐</td></tr>
+            </table>
             
-            <h3>2.5 帮助菜单</h3>
+            <h4>删除选中</h4>
+            <ol>
+                <li>选中要删除的设备或连线</li>
+                <li>点击菜单栏 <strong>「编辑」</strong></li>
+                <li>选择 <strong>「删除选中」</strong>（快捷键 <code>Delete</code>）</li>
+                <li>或直接按 <code>Delete</code> 键</li>
+            </ol>
+            
+            <h3>2.3 设置菜单</h3>
+            
+            <h4>设置...</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「设置」</strong></li>
+                <li>选择 <strong>「设置...」</strong></li>
+                <li>在弹出的设置对话框中配置：
+                    <ul>
+                        <li><strong>网格设置</strong>：网格间距（毫米）、是否显示网格、是否显示标尺、吸附阈值（毫米）</li>
+                        <li><strong>显示设置</strong>：比例尺（像素/毫米），表示每毫米对应的像素数，值越大显示越大</li>
+                        <li><strong>模拟设置</strong>：每日工作时长（小时），模拟周期选择"天"时起效，1天 = 设置的工作时长小时数</li>
+                        <li><strong>AI 分析设置</strong>：配置 AI 大模型 API（详见 11.6 节）</li>
+                    </ul>
+                </li>
+                <li>点击「保存」保存设置</li>
+            </ol>
+            
+            <h3>2.4 产品菜单</h3>
+            
+            <h4>产品管理...</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「产品」</strong></li>
+                <li>选择 <strong>「产品管理...」</strong></li>
+                <li>在弹出的对话框中进行产品配置（详见第 5 章）</li>
+            </ol>
+            
+            <h4>原料管理...</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「产品」</strong></li>
+                <li>选择 <strong>「原料管理...」</strong></li>
+                <li>在弹出的对话框中进行原料配置（详见第 6 章）</li>
+            </ol>
+            
+            <h4>工具管理...</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「产品」</strong></li>
+                <li>选择 <strong>「工具管理...」</strong></li>
+                <li>在弹出的对话框中进行工具配置（详见第 6A 章）</li>
+            </ol>
+            
+            <h3>2.5 模拟菜单</h3>
+            
+            <h4>显示/隐藏控制面板</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「模拟」</strong></li>
+                <li>选择 <strong>「显示控制面板」</strong> 或 <strong>「隐藏控制面板」</strong></li>
+                <li>切换模拟控制面板的显示状态</li>
+            </ol>
+            
+            <h4>模拟设置...</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「模拟」</strong></li>
+                <li>选择 <strong>「模拟设置...」</strong></li>
+                <li>在弹出的对话框中配置模拟相关参数（详见第 9 章）</li>
+            </ol>
+            
+            <h4>模拟统计...</h4>
+            <ol>
+                <li>点击菜单栏 <strong>「模拟」</strong></li>
+                <li>选择 <strong>「模拟统计...」</strong></li>
+                <li>打开模拟统计记录窗口，查看历史模拟记录（详见第 10 章）</li>
+            </ol>
+            
+            <h3>2.6 帮助菜单</h3>
             
             <h4>操作手册</h4>
             <ol>
                 <li>点击菜单栏 <strong>「帮助」</strong></li>
                 <li>选择 <strong>「操作手册」</strong></li>
-                <li>查看软件操作手册</li>
+                <li>在浏览器中打开本操作手册</li>
             </ol>
             
             <h4>关于</h4>
@@ -368,25 +400,16 @@
                 <li>在画布空白处拖动可框选多个设备</li>
             </ol>
             
-            <h3>3.2 平移工具</h3>
-            <p><strong>图标：</strong>四向箭头</p>
-            <p><strong>使用方法：</strong></p>
-            <ol>
-                <li>点击平移工具图标</li>
-                <li>在画布上拖动可移动视图位置</li>
-                <li>也可在任何模式下按住鼠标中键拖动</li>
-            </ol>
+            <h3>3.2 设备创建工具</h3>
             
-            <h3>3.3 设备创建工具</h3>
-            
-            <h4>工作站（矩形设备）</h4>
+            <h4>加工站（矩形设备）</h4>
             <ol>
                 <li>点击工具箱中的矩形图标</li>
                 <li>在画布上点击要创建设备的位置</li>
                 <li>设备将以默认尺寸创建</li>
             </ol>
             
-            <h4>工作站（圆形设备）</h4>
+            <h4>加工站（圆形设备）</h4>
             <ol>
                 <li>点击工具箱中的圆形图标</li>
                 <li>在画布上点击要创建设备的位置</li>
@@ -408,7 +431,7 @@
                 <li>每个模型至少需要一个终点</li>
             </ol>
             
-            <h3>3.4 连线创建工具</h3>
+            <h3>3.3 连线创建工具</h3>
             <p>点击连线图标展开连线类型选择：</p>
             <table>
                 <tr><th>类型</th><th>说明</th></tr>
@@ -426,7 +449,7 @@
                 <li>释放鼠标完成连线</li>
             </ol>
             
-            <h3>3.5 仓储设备</h3>
+            <h3>3.4 仓储设备</h3>
             <p>点击仓储图标展开选择：</p>
             
             <h4>仓库</h4>
@@ -436,35 +459,28 @@
                 <li>仓库具有固定容量限制</li>
             </ol>
             
-            <h4>临时堆场</h4>
-            <ol>
-                <li>点击临时堆场图标</li>
-                <li>在画布上点击创建临时堆场</li>
-                <li>临时堆场无容量限制</li>
-            </ol>
-            
-            <h3>3.6 缓冲区</h3>
+            <h3>3.5 缓冲区</h3>
             <p><strong>图标：</strong>分隔的矩形</p>
             <ol>
                 <li>点击缓冲区图标</li>
                 <li>在画布上点击创建缓冲区</li>
             </ol>
             
-            <h3>3.7 车间</h3>
+            <h3>3.6 厂房</h3>
             <p><strong>图标：</strong>带虚线分隔的矩形</p>
             <ol>
-                <li>点击车间图标</li>
-                <li>在画布上点击创建车间</li>
-                <li>可将设备、仓库、缓冲区放在车间内，移动车间时会同时移动车间内的设备</li>
-                <li>设备、仓库、缓冲区被放在车间内后，会有这些变化：
+                <li>点击厂房图标</li>
+                <li>在画布上点击创建厂房</li>
+                <li>可将设备、仓库、缓冲区放在厂房内，移动厂房时会同时移动厂房内的设备</li>
+                <li>设备、仓库、缓冲区被放在厂房内后，会有这些变化：
                     <ul>
-                        <li>车间内的节点移动时将不能超出车间边界</li>
-                        <li>节点的"所属车间"属性将被自动设置为车间名称，可通过调整上下左右边距修改节点相对于车间四边的距离</li>
+                        <li>厂房内的节点移动时将不能超出厂房边界</li>
+                        <li>节点的"所属厂房"属性将被自动设置为厂房名称，可通过调整上下左右边距修改节点相对于厂房四边的距离</li>
                     </ul>
                 </li>
             </ol>
             
-            <h3>3.8 装配站</h3>
+            <h3>3.7 装配站</h3>
             <p><strong>图标：</strong>梯形（底边较宽）</p>
             <ol>
                 <li>点击装配站图标</li>
@@ -473,7 +489,7 @@
                 <li>需要连接多个上游节点，并设置每个上游节点的来料需求量</li>
             </ol>
             
-            <h3>3.9 拆解站</h3>
+            <h3>3.8 拆解站</h3>
             <p><strong>图标：</strong>翻转梯形（顶边较宽）</p>
             <ol>
                 <li>点击拆解站图标</li>
@@ -488,13 +504,11 @@
             <table>
                 <tr><th>操作方式</th><th>说明</th></tr>
                 <tr><td>鼠标滚轮</td><td>向上滚动放大，向下滚动缩小</td></tr>
-                <tr><td>菜单「视图」→「放大/缩小」</td><td>每次缩放 20%</td></tr>
             </table>
             
             <h3>4.2 平移画布</h3>
             <table>
                 <tr><th>操作方式</th><th>说明</th></tr>
-                <tr><td>平移工具模式下拖动</td><td>移动视图位置</td></tr>
                 <tr><td>按住鼠标中键拖动</td><td>任何模式下都可使用</td></tr>
             </table>
             
@@ -526,8 +540,8 @@
             
             <h3>5.1 打开产品管理</h3>
             <ol>
-                <li>点击菜单栏 <strong>「设置」</strong></li>
-                <li>选择 <strong>「产品管理」</strong></li>
+                <li>点击菜单栏 <strong>「产品」</strong></li>
+                <li>选择 <strong>「产品管理...」</strong></li>
                 <li>弹出产品管理对话框</li>
             </ol>
             
@@ -554,18 +568,8 @@
                 <li>优先级仅影响同一设备等待队列中不同产品之间的选择顺序</li>
             </ul>
             
-            <h3>5.3 设置产品物料清单 (BOM)</h3>
-            <ol>
-                <li>在产品列表中选中产品</li>
-                <li>点击 <strong>「编辑」</strong> 按钮</li>
-                <li>在弹出的编辑器中</li>
-                <li>点击「添加原料」</li>
-                <li>选择原料类型（已在原料管理中创建）</li>
-                <li>输入每个产品消耗的原料数量</li>
-                <li>点击「确定」保存</li>
-            </ol>
-            
-            <h3>5.4 删除产品</h3>
+         
+            <h3>5.3 删除产品</h3>
             <ol>
                 <li>在产品列表中选中产品</li>
                 <li>点击 <strong>「删除」</strong> 按钮</li>
@@ -574,32 +578,72 @@
             
             <h2 id="section6">6. 物料管理</h2>
             
-            <h3>6.1 打开物料管理</h3>
+            <h3>6.1 打开原料管理</h3>
             <ol>
-                <li>点击菜单栏 <strong>「设置」</strong></li>
-                <li>选择 <strong>「物料管理」</strong></li>
-                <li>弹出物料管理对话框</li>
+                <li>点击菜单栏 <strong>「产品」</strong></li>
+                <li>选择 <strong>「原料管理...」</strong></li>
+                <li>弹出原料管理对话框</li>
             </ol>
             
-            <h3>6.2 创建物料</h3>
+            <h3>6.2 创建原料</h3>
             <ol>
-                <li>点击 <strong>「添加物料」</strong> 按钮</li>
+                <li>点击 <strong>「新建原料」</strong> 按钮</li>
                 <li>填写物料信息：
                     <ul>
-                        <li><strong>编码</strong>：物料唯一标识</li>
-                        <li><strong>名称</strong>：物料显示名称</li>
+                        <li><strong>编码</strong>：原料唯一标识</li>
+                        <li><strong>名称</strong>：原料显示名称</li>
                         <li><strong>单位</strong>：计量单位（如：个、千克、米）</li>
                     </ul>
                 </li>
                 <li>点击「确定」保存</li>
             </ol>
             
-            <h3>6.3 删除物料</h3>
+            <h3>6.3 删除原料</h3>
             <ol>
-                <li>在物料列表中选中物料</li>
+                <li>在原料列表中选中物料</li>
                 <li>点击 <strong>「删除」</strong> 按钮</li>
                 <li>确认删除操作</li>
             </ol>
+            
+            <h2 id="section6a">6A. 工具管理</h2>
+            
+            <h3>6A.1 打开工具管理</h3>
+            <ol>
+                <li>点击菜单栏 <strong>「产品」</strong></li>
+                <li>选择 <strong>「工具管理...」</strong></li>
+                <li>弹出工具管理对话框</li>
+            </ol>
+            
+            <h3>6A.2 创建工具</h3>
+            <ol>
+                <li>点击 <strong>「新建工具」</strong> 按钮</li>
+                <li>填写工具信息：
+                    <ul>
+                        <li><strong>工具编码</strong>：工具的唯一标识符</li>
+                        <li><strong>工具名称</strong>：工具的显示名称</li>
+                    </ul>
+                </li>
+                <li>点击「确定」保存</li>
+            </ol>
+            
+            <h3>6A.3 编辑工具</h3>
+            <ol>
+                <li>在工具列表中选中工具</li>
+                <li>点击 <strong>「编辑」</strong> 按钮</li>
+                <li>修改工具信息</li>
+                <li>点击「确定」保存</li>
+            </ol>
+            
+            <h3>6A.4 删除工具</h3>
+            <ol>
+                <li>在工具列表中选中工具</li>
+                <li>点击 <strong>「删除」</strong> 按钮</li>
+                <li>确认删除操作</li>
+            </ol>
+            
+            <div class="note">
+                <strong>注意：</strong>工具的安装时间需要在加工站的产品配置中单独设置，因为同一工具在不同产品加工时可能需要不同的安装时间。
+            </div>
             
             <h2 id="section7">7. 设备创建与配置</h2>
             
@@ -615,26 +659,13 @@
                 <tr><th>属性</th><th>说明</th><th>设置方法</th></tr>
                 <tr><td>名称</td><td>设备显示名称</td><td>在属性面板输入</td></tr>
                 <tr><td>产品</td><td>起点生成的产品</td><td>在「产品设置」标签选择</td></tr>
-                <tr><td>生成间隔</td><td>产品生成的时间间隔</td><td>输入秒数</td></tr>
-                <tr><td>初始数量</td><td>模拟开始时的初始产品数</td><td>输入数量</td></tr>
-                <tr><td>目标产量</td><td>固定产量模式下的投料目标</td><td>输入数量（固定产量模式时使用）</td></tr>
-                <tr><td>投料设置</td><td>原料消耗配置</td><td>在「投料设置」标签配置</td></tr>
+                <tr><td>投料设置</td><td>投料模式配置</td><td>选择「下游空闲」或者「固定节拍」生成初始投料</td></tr>
             </table>
-            
-            <p><strong>目标产量说明：</strong></p>
-            <ul>
-                <li>仅在「固定产量」模拟模式下生效</li>
-                <li>设置起点需要投料的产品数量</li>
-                <li>当投料数量达到目标产量后，起点停止投料</li>
-                <li>如果不设置或设置为0，表示不限量投料</li>
-            </ul>
             
             <p><strong>投料设置：</strong></p>
             <ol>
                 <li>切换到「投料设置」标签</li>
-                <li>点击「添加投料」</li>
-                <li>选择原料类型</li>
-                <li>设置每个产品消耗的原料数量</li>
+                <li>点击「投料模式配置」</li>
             </ol>
             
             <h3>7.2 终点 (EndNode)</h3>
@@ -646,10 +677,20 @@
             
             <p><strong>属性配置：</strong></p>
             <table>
-                <tr><th>属性</th><th>说明</th></tr>
-                <tr><td>名称</td><td>设备显示名称</td></tr>
-                <tr><td>产品</td><td>接收的产品类型</td></tr>
+                <tr><th>标签</th><th>属性</th><th>说明</th></tr>
+                <tr><td>基础信息</td><td>名称</td><td>设备显示名称</td></tr>
+                <tr><td>基础信息</td><td>产品</td><td>接收的产品类型</td></tr>
+                <tr><td>目标产量</td><td>目标产量</td><td>固定产量模式下，为每个可达产品设置目标产量，达标后自动停止对应起点的投料</td></tr>
             </table>
+
+            <p><strong>目标产量说明：</strong></p>
+            <ol>
+                <li>切换到「目标产量」标签</li>
+                <li>勾选需要设置目标产量的产品，并输入目标数量</li>
+                <li>仅在「固定产量」模拟模式下可设置目标产量</li>
+                <li>当对应起点的投料数量达到目标产量后，该起点停止投料</li>
+                <li>如果不设置或设置为0，表示不限量投料</li>
+            </ol>
             
             <h3>7.3 设备 (Station)</h3>
             <p><strong>创建步骤：</strong></p>
@@ -753,12 +794,7 @@
             </table>
             
             <h3>7.5 临时堆场 (TempStore)</h3>
-            <p><strong>创建步骤：</strong></p>
-            <ol>
-                <li>在工具箱展开仓储菜单</li>
-                <li>点击临时堆场图标</li>
-                <li>在画布上点击创建</li>
-            </ol>
+            <p>临时堆场无容量限制。当前版本的工具箱中不再提供创建临时堆场的入口，但已包含临时堆场的布局文件仍可正常加载和编辑其属性。</p>
             
             <p><strong>属性配置：</strong></p>
             <table>
@@ -822,10 +858,10 @@
                 </li>
             </ol>
             
-            <h3>7.7 车间 (Workshop)</h3>
+            <h3>7.7 厂房 (Workshop)</h3>
             <p><strong>创建步骤：</strong></p>
             <ol>
-                <li>在工具箱点击车间图标</li>
+                <li>在工具箱点击厂房图标</li>
                 <li>在画布上点击创建</li>
             </ol>
             
@@ -1046,6 +1082,32 @@
                 <li>运输记录包含批次信息</li>
             </ul>
             
+            <h3>8.5 连线动画效果</h3>
+            <p>模拟运行时，连线上会显示流动的圆点以直观反映运输状态。动画仅在模拟运行期间显示，停止时不显示。</p>
+            
+            <p><strong>正向动画（蓝色圆点）：</strong></p>
+            <p>表示产品正从上游运输至下游，仅在以下情况显示：</p>
+            <ul>
+                <li>起点连线：投料动画激活时（起点正在投放产品）</li>
+                <li>终点连线：完成动画激活时（有产品到达终点，动画持续约 3 秒）</li>
+                <li>普通连线：当前有在途产品（inflight > 0）时</li>
+            </ul>
+            
+            <p><strong>反向动画（橙色圆点）：</strong></p>
+            <p>表示运输小车空载从下游返回上游，仅在以下条件全部满足时显示：</p>
+            <ul>
+                <li>连线运输模式为「离散运输」</li>
+                <li>连线两端均非起点和终点</li>
+                <li>当前有空车正在返回（即忙碌小车数大于在途数）</li>
+            </ul>
+            
+            <p><strong>说明：</strong></p>
+            <ul>
+                <li>连续运输模式不会有反向动画（无小车概念）</li>
+                <li>起点和终点的连线不会有反向动画</li>
+                <li>动画圆点位置会循环移动，无运输活动时圆点静止</li>
+            </ul>
+            
             <h2 id="section9">9. 模拟运行</h2>
             
             <h3>9.1 打开模拟控制面板</h3>
@@ -1066,11 +1128,11 @@
                 <li>选择不同的时间单位时，系统会自动换算。例如选择"小时"并输入8，等同于28800秒</li>
             </ol>
             
-            <p><strong>模拟速度：</strong></p>
+            <p><strong>加速倍数：</strong></p>
             <ol>
-                <li>拖动速度滑块</li>
-                <li>可选范围：1x ~ 100x</li>
-                <li>常用速度：1x、2x、5x、10x、50x、100x</li>
+                <li>在「加速倍数」输入框输入数值</li>
+                <li>可选范围：0.1 ~ 100</li>
+                <li>该值控制模拟运行相对于真实时间的加速倍数，例如输入10表示模拟以10倍速运行</li>
             </ol>
             
             <p><strong>动态平衡算法：</strong></p>
@@ -1176,6 +1238,18 @@
                 <li><strong>最多相同工具</strong>：按相同工具编码的数量计算。例如 {T1, T2} 和 {T1, T2, T3}，相同工具数量为2（T1和T2）</li>
             </ul>
             
+            <p><strong>启动 WebSocket 服务：</strong></p>
+            <ol>
+                <li>在设置面板中勾选「启动websocket服务」复选框</li>
+                <li>勾选后，面板会显示 WebSocket 服务地址：<code>ws://localhost:{端口}/ws/simulation</code></li>
+                <li>启用后，模拟运行过程中的实时状态数据将通过该 WebSocket 接口推送，可供外部三维仿真软件接收并联动展示</li>
+                <li>该选项可在模拟运行过程中随时勾选或取消</li>
+            </ol>
+            
+            <div class="note">
+                <strong>注意：</strong>该功能用于与外部三维模拟软件联动，如不需联动可保持关闭。
+            </div>
+            
             <h3>9.3 运行模拟</h3>
             
             <p><strong>获取工艺路线：</strong></p>
@@ -1220,7 +1294,7 @@
                 <tr><td>已运行时间</td><td>当前模拟已运行的时间</td></tr>
                 <tr><td>总时长</td><td>设置的模拟总时长</td></tr>
                 <tr><td>完成产品</td><td>已到达终点的产品数量</td></tr>
-                <tr><td>模拟速度</td><td>当前模拟速度</td></tr>
+                <tr><td>速度</td><td>当前模拟速度（与设置面板中的「加速倍数」一致，单位 x）</td></tr>
             </table>
             
             <h2 id="section10">10. 统计分析</h2>
@@ -1429,8 +1503,15 @@
             <h3>11.1 打开 AI 分析</h3>
             <ol>
                 <li>在模拟控制面板中，点击 <strong>「AI」</strong> 按钮</li>
-                <li>弹出 AI 分析窗口</li>
+                <li>系统会依次执行以下检查：
+                    <ul>
+                        <li>检查是否已配置 AI 大模型 API。若未配置，弹出警告框提示「请先在设置中配置AI大模型API」，需先前往设置完成配置（参见 11.6 节）</li>
+                        <li>自动测试 AI 大模型连接。若连接失败，弹出错误框提示「AI大模型连接测试失败」及失败原因，请检查设置中的 API 地址、Key、模型名称及网络</li>
+                    </ul>
+                </li>
+                <li>检查通过后，弹出 AI 分析窗口</li>
                 <li>如果尚未保存任何模拟记录，该按钮为灰色不可点击状态，需先运行模拟并保存记录</li>
+                <li>检查过程中按钮显示「...」并禁用，待检查完成后恢复</li>
             </ol>
             
             <div class="note">
@@ -1484,8 +1565,8 @@
                 <li>点击记录右侧的 <strong>「✕」</strong> 按钮可删除该历史记录</li>
             </ol>
             
-            <h3>11.6 配置自定义 AI 服务</h3>
-            <p>默认使用内置 AI 服务。如需使用自己的大模型 API，可进行如下配置：</p>
+            <h3>11.6 配置 AI 大模型 API</h3>
+            <p>AI 分析与优化功能需要先配置大模型 API 才能使用，<strong>未配置时无法使用 AI 功能</strong>。</p>
             <ol>
                 <li>点击菜单栏 <strong>「设置」</strong> → <strong>「设置...」</strong></li>
                 <li>在设置对话框中找到 <strong>「AI 分析设置」</strong> 区域</li>
@@ -1512,8 +1593,15 @@
             <h3>12.1 打开 AI 自动优化</h3>
             <ol>
                 <li>在模拟控制面板中，点击 <strong>「AI优化」</strong> 按钮</li>
-                <li>弹出 AI 优化窗口</li>
+                <li>系统会依次执行以下检查（与 AI 分析相同）：
+                    <ul>
+                        <li>检查是否已配置 AI 大模型 API，未配置时弹出警告框提示先前往设置配置（参见 11.6 节）</li>
+                        <li>自动测试连接，失败时弹出错误框提示检查 AI 配置</li>
+                    </ul>
+                </li>
+                <li>检查通过后，弹出 AI 优化窗口</li>
                 <li>如果尚未保存任何模拟记录，需先运行模拟并保存记录</li>
+                <li>检查过程中按钮显示「...」并禁用</li>
             </ol>
             
             <div class="note">
@@ -1649,7 +1737,7 @@
                 <tr><td><code>Delete</code></td><td>删除选中对象</td></tr>
                 <tr><td><code>Ctrl + S</code></td><td>保存布局</td></tr>
                 <tr><td><code>Ctrl + O</code></td><td>打开布局</td></tr>
-                <tr><td><code>Ctrl + N</code></td><td>新建画布</td></tr>
+                <tr><td><code>Ctrl + N</code></td><td>新建布局</td></tr>
                 <tr><td><code>Ctrl + Z</code></td><td>撤销</td></tr>
                 <tr><td><code>Ctrl + Y</code></td><td>重做</td></tr>
                 <tr><td><code>Ctrl + A</code></td><td>全选</td></tr>
@@ -1690,6 +1778,7 @@
             <ol>
                 <li>选中仓库</li>
                 <li>在属性面板增加容量值</li>
+                <li>或添加缓冲区作为缓冲</li>
             </ol>
         </div>
         
