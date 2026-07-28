@@ -21,7 +21,7 @@ export default function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
           v1.4.3
         </p>
         <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: '#475569' }}>
-          离散生产与物流系统模拟工具
+          离散生产智能仿真模拟软件
         </p>
         
         <div style={{ marginBottom: '20px' }}>
